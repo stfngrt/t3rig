@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from openrigt3 import __version__
-from openrigt3.cli import main
+from t3rig import __version__
+from t3rig.cli import main
 
 EXAMPLE = Path(__file__).parent.parent / "examples" / "two-seat" / "rig.yaml"
 

@@ -1,6 +1,6 @@
 <img src="assets/icon.svg" width="64" height="64" alt="">
 
-# openrigt3
+# t3rig
 
 Run [OpenRig](https://github.com/mvschwarz/openrig)-compatible `rig.yaml` files on
 [T3 Code](https://t3.codes), with every seat as a T3 thread. There is no tmux and no daemon.
@@ -10,10 +10,10 @@ Status: early, simple version. It has been run on a two-seat Claude rig.
 ## Usage
 
 ```sh
-uv run openrigt3 validate examples/two-seat/rig.yaml   # check the spec; starts nothing
-uv run openrigt3 up examples/two-seat/rig.yaml         # start a thread per seat; safe to re-run
-uv run openrigt3 ps examples/two-seat/rig.yaml         # show status and thread links
-uv run openrigt3 send examples/two-seat/rig.yaml dev.impl "Hello"        # add --wait for the reply
+uv run t3rig validate examples/two-seat/rig.yaml   # check the spec; starts nothing
+uv run t3rig up examples/two-seat/rig.yaml         # start a thread per seat; safe to re-run
+uv run t3rig ps examples/two-seat/rig.yaml         # show status and thread links
+uv run t3rig send examples/two-seat/rig.yaml dev.impl "Hello"        # add --wait for the reply
 ```
 
 A seat's thread is the one titled `pod-member@rig` (OpenRig's seat name), so renaming a thread
@@ -42,7 +42,7 @@ resources, startup files, services, continuity policies and permission settings.
 Requires [uv](https://docs.astral.sh/uv/).
 
 ```sh
-uv run openrigt3 --version
+uv run t3rig --version
 uv run pytest
 uv run ruff check .
 ```

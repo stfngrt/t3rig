@@ -1,4 +1,4 @@
-"""Load and validate the subset of OpenRig's RigSpec format that openrigt3 can run.
+"""Load and validate the subset of OpenRig's RigSpec format that t3rig can run.
 
 Anything outside the subset is refused, so a rig never runs with part of its spec ignored.
 """
@@ -112,7 +112,7 @@ def _check_keys(
             continue
         if key in openrig_only:
             if value:
-                errors.append(f"{where}.{key}: OpenRig feature not supported by openrigt3 yet")
+                errors.append(f"{where}.{key}: OpenRig feature not supported by t3rig yet")
         else:
             errors.append(f"{where}.{key}: unknown key")
 
@@ -166,9 +166,7 @@ def _check_agent(
     _check_keys(agent, AGENT_KEYS, set(agent) - AGENT_KEYS, f"{where} agent", errors)
     resources = agent.get("resources") or {}
     if not isinstance(resources, dict) or any(resources.values()):
-        errors.append(
-            f"{where} agent.resources: placing resources isn't supported by openrigt3 yet"
-        )
+        errors.append(f"{where} agent.resources: placing resources isn't supported by t3rig yet")
     profiles = agent.get("profiles") or {}
     selected = profiles.get(profile) if isinstance(profiles, dict) else None
     if not isinstance(selected, dict):
@@ -177,7 +175,7 @@ def _check_agent(
     _check_keys(selected, PROFILE_KEYS, set(selected) - PROFILE_KEYS, f"{where} profile", errors)
     uses = selected.get("uses") or {}
     if not isinstance(uses, dict) or any(uses.values()):
-        errors.append(f"{where} profile.uses: placing resources isn't supported by openrigt3 yet")
+        errors.append(f"{where} profile.uses: placing resources isn't supported by t3rig yet")
 
 
 def _parse_seat(

@@ -1,0 +1,42 @@
+version: "0.2"
+name: gap-research
+summary: Research the feature gap between t3rig and OpenRig.
+culture_file: culture.md
+pods:
+  - id: research
+    label: Research
+    members:
+      - id: lead
+        agent_ref: "local:agents/researcher"
+        profile: default
+        runtime: claude-code
+        model: claude-sonnet-5-5
+        cwd: ../..
+      - id: spec
+        agent_ref: "local:agents/researcher"
+        profile: default
+        runtime: claude-code
+        model: claude-sonnet-5-5
+        cwd: ../..
+      - id: runtime
+        agent_ref: "local:agents/researcher"
+        profile: default
+        runtime: claude-code
+        model: claude-sonnet-5-5
+        cwd: ../..
+      - id: surfaces
+        agent_ref: "local:agents/researcher"
+        profile: default
+        runtime: claude-code
+        model: claude-sonnet-5-5
+        cwd: ../..
+    edges:
+      - kind: delegates_to
+        from: lead
+        to: spec
+      - kind: delegates_to
+        from: lead
+        to: runtime
+      - kind: delegates_to
+        from: lead
+        to: surfaces

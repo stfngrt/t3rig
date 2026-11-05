@@ -21,7 +21,7 @@ wheels = [
 ]
 
 [[package]]
-name = "openrigt3"
+name = "t3rig"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

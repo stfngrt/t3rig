@@ -5,8 +5,8 @@ import sys
 from dataclasses import dataclass
 from typing import Any
 
-from openrigt3.spec import Rig, Seat
-from openrigt3.t3 import T3Cli
+from t3rig.spec import Rig, Seat
+from t3rig.t3 import T3Cli
 
 PROVIDERS = {"claude-code": "claudeAgent", "codex": "codex"}
 
@@ -45,7 +45,7 @@ def _peer_lines(rig: Rig, seat: Seat) -> list[str]:
 
 def seat_brief(rig: Rig, seat: Seat) -> str:
     """The first message a seat's thread receives."""
-    send = shlex.join([sys.executable, "-m", "openrigt3", "send", str(rig.path)])
+    send = shlex.join([sys.executable, "-m", "t3rig", "send", str(rig.path)])
     others = [s.qualified_id for s in rig.seats if s != seat]
     parts = [
         f"You are seat {seat.qualified_id} in the agent team (rig) {rig.name}.",
@@ -112,5 +112,5 @@ def send(rig: Rig, t3: T3Cli, qualified_id: str, message: str, wait: bool = Fals
         raise RigError(f"no seat {qualified_id!r} in rig {rig.name} (seats: {known})")
     status = next(s for s in seat_statuses(rig, t3) if s.seat == seat)
     if status.thread is None:
-        raise RigError(f"{qualified_id} has no thread; run `openrigt3 up` first")
+        raise RigError(f"{qualified_id} has no thread; run `t3rig up` first")
     return t3.send(status.thread["threadId"], message, wait=wait)

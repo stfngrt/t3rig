@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from openrigt3.spec import SpecError, load_rig
+from t3rig.spec import SpecError, load_rig
 
 AGENT = (
     'name: a\nversion: "1"\nresources: {skills: []}\nprofiles: {default: {uses: {skills: []}}}\n'

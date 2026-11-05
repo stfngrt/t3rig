@@ -4,19 +4,19 @@ import argparse
 import sys
 from collections.abc import Sequence
 
-from openrigt3 import __version__
-from openrigt3.rig import RigError, seat_statuses, send, up
-from openrigt3.spec import Rig, SpecError, load_rig
-from openrigt3.t3 import T3Cli, T3Error
+from t3rig import __version__
+from t3rig.rig import RigError, seat_statuses, send, up
+from t3rig.spec import Rig, SpecError, load_rig
+from t3rig.t3 import T3Cli, T3Error
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="openrigt3", description=__doc__)
+    parser = argparse.ArgumentParser(prog="t3rig", description=__doc__)
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
 
     for name, description in (
-        ("validate", "Check that openrigt3 can run a rig spec."),
+        ("validate", "Check that t3rig can run a rig spec."),
         ("up", "Start a T3 thread for each seat that doesn't have one."),
         ("ps", "Show each seat's T3 thread and status."),
     ):

@@ -1,6 +1,6 @@
 version: "0.2"
 name: two-seat
-summary: A lead and an implementer, for trying openrigt3.
+summary: A lead and an implementer, for trying t3rig.
 culture_file: culture.md
 pods:
   - id: dev

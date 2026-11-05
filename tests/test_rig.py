@@ -3,8 +3,8 @@ from typing import Any
 
 import pytest
 
-from openrigt3.rig import RigError, seat_brief, seat_statuses, send, up
-from openrigt3.spec import Edge, Rig, Seat
+from t3rig.rig import RigError, seat_brief, seat_statuses, send, up
+from t3rig.spec import Edge, Rig, Seat
 
 
 class FakeT3:
@@ -113,4 +113,4 @@ def test_brief_covers_role_peers_and_culture(tmp_path: Path) -> None:
     rig = make_rig(tmp_path)
     brief = seat_brief(rig, rig.seats[0])
     assert "seat dev.lead" in brief and "You delegates_to dev.impl" in brief
-    assert "Be honest." in brief and "-m openrigt3 send" in brief
+    assert "Be honest." in brief and "-m t3rig send" in brief

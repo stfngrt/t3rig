@@ -1,0 +1,32 @@
+version: "0.2"
+name: self
+summary: Develops t3rig itself.
+culture_file: culture.md
+permission_policy: builtin:auto
+pods:
+  - id: dev
+    label: Development
+    members:
+      - id: lead
+        agent_ref: "local:agents/lead"
+        profile: default
+        runtime: claude-code
+        cwd: ../..
+      - id: impl
+        agent_ref: "local:agents/impl"
+        profile: default
+        runtime: claude-code
+        cwd: ../..
+      - id: review
+        agent_ref: "local:agents/review"
+        profile: default
+        runtime: claude-code
+        permission_policy: builtin:locked
+        cwd: ../..
+    edges:
+      - kind: delegates_to
+        from: lead
+        to: impl
+      - kind: delegates_to
+        from: lead
+        to: review

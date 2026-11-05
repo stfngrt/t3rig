@@ -1,0 +1,10 @@
+name: impl
+version: "1.0.0"
+defaults:
+  model: claude-sonnet-5-5
+startup:
+  files:
+    - path: role.md
+      delivery_hint: send_text
+profiles:
+  default: {}

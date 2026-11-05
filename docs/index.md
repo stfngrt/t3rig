@@ -96,6 +96,7 @@ adr/index
 :caption: Project
 
 development
+lessons
 design/index
 research/index
 ```

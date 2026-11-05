@@ -126,6 +126,7 @@ Claude shape without per-thread env.
 | **G. Per-seat `CLAUDE_CONFIG_DIR` or Codex `HOME`/`-c`** | Yes | **No** | Yes | Moves credentials, history and settings too [^cc-env]; blocked on T3 |
 | **H. Nested per-seat subfolder as `cwd`** | Partly | Yes | Claude loads nested skills on first read there [^cc-skills]; Codex scans up from the launch directory, *unverified* after a `cd` | Fragile; not recommended |
 | **I. Settings rules** (`skillOverrides`, `Skill(...)`, `[[skills.config]]`) | Only if settings are per seat | Only in a per-seat folder | Yes | Claude's settings are per project or user and Codex's per user (or trusted project), not per seat, so there is no gain over E |
+| **J. Auto memory switches** (not skills: `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, or `autoMemoryEnabled` via `--settings`) | Yes, per session | **No** (an env var or a flag) | n/a | Seats and the operator's sessions in one project share one auto memory folder; a project setting would also turn off the operator's own memory. See "Seat memory" in {doc}`../development` |
 
 ## Recommendation
 

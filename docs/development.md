@@ -43,3 +43,38 @@ tracker and label docs they read.
 - **Not taken, `triage`:** its state machine would add labels (`needs-triage`, `ready-for-agent`,
   `wontfix`) and an `.out-of-scope/` folder that this rig doesn't use. The labels are mapped in
   `docs/agents/triage-labels.md` instead; `wontfix` is used only when closing an issue.
+
+### Seat memory
+
+The seats run Claude Code in the same project path as the operator's own session, so they share
+one auto memory folder (`~/.claude/projects/<project>/memory/`) and load the operator's notes at
+startup. The folder is derived from the git repository, so "all worktrees and subdirectories within
+the same repo share one auto memory directory", and it is machine-local
+([memory](https://code.claude.com/docs/en/memory)).
+
+What the Claude Code docs offer for turning it off or moving it:
+
+- `autoMemoryEnabled: false` in settings, or the `/memory` toggle, which saves it to user settings.
+  The memory page shows it in a project's settings too, and the settings reference lists
+  `autoMemoryEnabled` and `autoMemoryDirectory` as settable in any settings file (user, project,
+  local or managed) ([memory](https://code.claude.com/docs/en/memory),
+  [settings](https://code.claude.com/docs/en/settings-reference)).
+- `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` in the environment ([memory](https://code.claude.com/docs/en/memory)).
+- `autoMemoryDirectory` to store it elsewhere, read from any settings scope "or `--settings`"
+  ([memory](https://code.claude.com/docs/en/memory)). `--settings` is "a path to a settings JSON file or an
+  inline JSON string" whose values "override the same keys in your `settings.json` files for this
+  session" ([CLI reference](https://code.claude.com/docs/en/cli-reference)); it is the per-session
+  route, and T3 can't pass it.
+- `--bare` and `--safe-mode` also skip auto memory, but with CLAUDE.md, skills and more, which seats
+  need ([CLI reference](https://code.claude.com/docs/en/cli-reference)).
+- `CLAUDE_CONFIG_DIR` moves the configuration directory, and with `CLAUDE_CODE_PROJECT_DIR_NAME`
+  chooses where transcripts and auto memory go ([env vars](https://code.claude.com/docs/en/env-vars)).
+
+The per-session switches are an environment variable and command-line flags. T3 can set neither per
+thread (`t3 thread start` and `t3_thread_launch` take no env, settings or extra arguments; see
+{doc}`design/per-seat-skills`), so a per-session switch isn't reachable. A project or local settings
+file would turn auto memory off for the operator's own sessions in this project too, so the rig doesn't
+set one. Instead `rigs/self/culture.md` tells seats not to write to auto memory: their durable record
+is the issues and {doc}`lessons`. Seats still read the operator's memory at startup; only writing is
+ruled out. If T3 gains a per-thread environment (the same ask as option F in
+{doc}`design/per-seat-skills`), seats could run with `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`.

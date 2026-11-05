@@ -19,7 +19,7 @@ The user has asked for a **retrospective**. You are suggesting improvements to t
 - **No-ops**: look for instructions in steering files that don't modify the agent's behavior. _Use when_ the steering files are large and unwieldy.
 - **Information access**: look for opportunities to increase the agent's access to information. Teeing dev server logs, readonly access to third-party services. _Use when_ a crucial piece of information was not available to the agent.
 
-3. Post these candidates as an issue comment headed `Retro`, in order of severity. Don't edit roles, culture or skills yourself: dev.lead doesn't edit files, and the operator decides which become tickets.
+3. Give these candidates, in order of severity, to the lead's lessons for the ticket (the `Lessons:` line and the `docs/lessons.md` entry). Don't edit roles, culture or skills yourself: dev.lead doesn't edit files. A candidate that is clearly right and small is applied by dev.impl in the ticket's commit; a bigger one becomes a new issue without `rig-queue`.
 
 ## Reference
 

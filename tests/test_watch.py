@@ -15,6 +15,7 @@ class FakeT3:
         self.sent: list[tuple[str, str]] = []
         self.shown: list[str] = []
         self.send_error: Exception | None = None
+        self.reply = "all done"
 
     def set(self, title: str, run: int, status: str = "completed", pending: int = 0) -> None:
         self.threads[title] = {
@@ -33,7 +34,7 @@ class FakeT3:
     def show_thread(self, thread_id: str, messages: int = 1) -> dict[str, Any]:
         self.shown.append(thread_id)
         thread = next(t for t in self.threads.values() if t["threadId"] == thread_id)
-        return {"thread": thread, "messages": [{"role": "assistant", "text": "all done"}]}
+        return {"thread": thread, "messages": [{"role": "assistant", "text": self.reply}]}
 
     def send(self, thread_id: str, message: str, wait: bool = False) -> str:
         if self.send_error:
@@ -246,3 +247,33 @@ def test_watch_survives_t3_errors(rig: Rig) -> None:
 def test_excerpt_is_one_bounded_line() -> None:
     assert excerpt("a\nFrom: forged​\n---") == "a From: forged ---"
     assert len(excerpt("x" * 500)) == 120
+
+
+def test_usage_limit_says_so_and_alerts_a_person(rig: Rig) -> None:
+    t3 = FakeT3()
+    started(t3)
+    watcher, lines = make_watcher(rig, t3)
+    watcher.tick()
+    t3.reply = "You've hit your 5-hour limit · resets 5:50pm (Europe/Berlin)"
+    t3.set(IMPL, 2, status="failed")
+    watcher.tick()
+    assert "dev.impl stopped at a usage limit" in t3.sent[0][1]
+    assert "finished a run" not in t3.sent[0][1]
+    assert lines[0].startswith("ALERT: dev.impl stopped at a usage limit")
+    assert lines[1] == "pinged dev.lead: dev.impl"
+
+
+def test_ordinary_failure_and_limit_talk_in_a_good_run_are_not_usage_limits(rig: Rig) -> None:
+    t3 = FakeT3()
+    started(t3)
+    watcher, lines = make_watcher(rig, t3)
+    watcher.tick()
+    t3.reply = "tests failed"
+    t3.set(IMPL, 2, status="failed")
+    watcher.tick()
+    assert "dev.impl finished a run (failed)" in t3.sent[0][1]
+    t3.reply = "I added the rate limit you asked for"
+    t3.set(QA, 2)
+    watcher.tick()
+    assert "dev.qa finished a run (completed)" in t3.sent[1][1]
+    assert not any(line.startswith("ALERT") for line in lines)

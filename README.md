@@ -65,8 +65,9 @@ uv run t3rig watch examples/two-seat/rig.yaml
   doesn't count.
 - A ping is a short pointer with a one-line excerpt and a link. The dispatcher reads the thread for
   the rest.
-- A failed ping is retried on the next check, and prints an `ALERT` after three failures. So does a
-  stuck seat with no dispatcher.
+- A failed ping is retried on the next check, and prints an `ALERT` after three failures. A stuck
+  seat with no dispatcher also prints one, and so does a seat stopped at a usage limit, which `watch`
+  recognizes from the wording of its last reply.
 - It keeps what it has pinged in a small file under `~/.local/state/t3rig/`, so a restart neither
   repeats old pings nor misses new ones. A crash can repeat a ping, but not lose one.
 - It only works while running. It's a foreground command, not a daemon.

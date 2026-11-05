@@ -9,6 +9,7 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 import tempfile
 import time
 import unicodedata
@@ -26,6 +27,8 @@ from t3rig.t3 import T3Cli, T3Error
 EXCERPT_CHARS = 120
 ALERT_AFTER_FAILURES = 3
 SENDER = "t3rig watch"
+# T3 has no field for this, so it's read from the failed run's last reply.
+USAGE_LIMIT = re.compile(r"\b(usage|rate|session|weekly|\d+-hour) limit\b|hit your .*limit", re.I)
 CLOSING = (
     "Each line above points at a seat's thread; read it with `t3 thread show <id> --messages 3`. "
     "Reply to a seat only if there's more for it to do, and end your turn otherwise."
@@ -86,6 +89,7 @@ class Event:
     dispatcher: str | None
     line: str
     updates: dict[str, Any] = field(default_factory=dict)
+    needs_person: bool = False
 
 
 def _thread_line(prefix: str, thread: dict[str, Any]) -> str:
@@ -120,7 +124,16 @@ def _check_seat(
         key = f"{run}:{pending}"
         if known["asked"] != key:
             line = _thread_line(f"{seat} needs input ({pending} pending request).", thread)
-            events.append(Event(seat, status.session_name, dispatcher, line, {"asked": key}))
+            events.append(
+                Event(
+                    seat,
+                    status.session_name,
+                    dispatcher,
+                    line,
+                    {"asked": key},
+                    needs_person=dispatcher is None,
+                )
+            )
         return events, updates
     if known["asked"]:
         updates["asked"] = None
@@ -133,8 +146,25 @@ def _check_seat(
             messages = detail.get("messages") or [{}]
             reply = excerpt(messages[-1].get("text") or "")
             said = f' Last reply: "{reply}"' if reply else ""
-            line = _thread_line(f"{seat} finished a run ({thread.get('status')}).{said}", thread)
-            events.append(Event(seat, status.session_name, dispatcher, line, {"run": run}))
+            limited = thread.get("status") != "completed" and USAGE_LIMIT.search(reply)
+            if limited:
+                prefix = (
+                    f"{seat} stopped at a usage limit and won't continue on its own; "
+                    f"message it again after the limit resets.{said}"
+                )
+            else:
+                prefix = f"{seat} finished a run ({thread.get('status')}).{said}"
+            line = _thread_line(prefix, thread)
+            events.append(
+                Event(
+                    seat,
+                    status.session_name,
+                    dispatcher,
+                    line,
+                    {"run": run},
+                    needs_person=bool(limited),
+                )
+            )
     return events, updates
 
 
@@ -178,10 +208,10 @@ class Watcher:
             events, updates = _check_seat(status, entry, dispatcher, self.t3)
             self._apply(status.session_name, updates)
             for event in events:
+                # A dispatcher can't fix these, so a person has to hear about them too.
+                if event.needs_person:
+                    self.out(f"ALERT: {event.line.removeprefix('- ')}")
                 if event.dispatcher is None:
-                    # Nobody above this seat, so a person has to hear about a stuck seat.
-                    if "needs input" in event.line:
-                        self.out(f"ALERT: {event.line.removeprefix('- ')}")
                     self._apply(event.session_name, event.updates)
                 else:
                     by_dispatcher.setdefault(event.dispatcher, []).append(event)

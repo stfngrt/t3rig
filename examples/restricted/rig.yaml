@@ -1,0 +1,23 @@
+version: "0.2"
+name: restricted
+summary: Seats with different permission modes. Needs `t3rig login --access auto`.
+permission_policy: builtin:auto
+pods:
+  - id: dev
+    label: Development
+    members:
+      - id: lead
+        agent_ref: "local:agents/worker"
+        profile: default
+        runtime: claude-code
+        cwd: .
+      - id: review
+        agent_ref: "local:agents/worker"
+        profile: default
+        runtime: claude-code
+        permission_policy: builtin:locked
+        cwd: .
+    edges:
+      - kind: delegates_to
+        from: lead
+        to: review

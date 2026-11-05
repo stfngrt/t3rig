@@ -7,7 +7,8 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from t3rig import __version__
-from t3rig.rig import RigError, seat_rows, select_seats, send, up
+from t3rig.mcp import ACCESS_LEVELS, login
+from t3rig.rig import RigError, down, seat_rows, select_seats, send, up
 from t3rig.spec import Rig, SpecError, load_rig
 from t3rig.t3 import T3Cli, T3Error
 from t3rig.watch import dispatchers, last_check, watch
@@ -23,6 +24,19 @@ def build_parser() -> argparse.ArgumentParser:
         ("up", "Start a T3 thread for each seat that doesn't have one."),
     ):
         commands.add_parser(name, help=description).add_argument("rig", help="path to rig.yaml")
+
+    login_parser = commands.add_parser(
+        "login",
+        help="Sign in to T3's /mcp, for permission modes, effort and down. "
+        "Seats can't be launched above this level.",
+    )
+    login_parser.add_argument("--access", required=True, choices=ACCESS_LEVELS)
+
+    down_parser = commands.add_parser(
+        "down", help="Interrupt and archive seats' threads, keeping their transcripts."
+    )
+    down_parser.add_argument("rig", help="path to rig.yaml")
+    down_parser.add_argument("--seat", help="only this seat, as pod.member")
 
     ps_parser = commands.add_parser("ps", help="Show each seat's T3 thread and status.")
     ps_parser.add_argument("rig", help="path to rig.yaml")
@@ -137,15 +151,34 @@ def _send(rig: Rig, t3: T3Cli, args: argparse.Namespace) -> int:
     return 1 if any(result.error for result in results) else 0
 
 
+def _login(access: str) -> None:
+    info = login(access)
+    expires = datetime.fromtimestamp(info["expires_at"], UTC).date()
+    print(f"Signed in to {info['origin']} at {info['access']}, until {expires}.")
+    print("Revoke it with `t3 auth session revoke` (find it with `t3 auth session list`).")
+
+
+def _down(rig: Rig, t3: T3Cli, seat: str | None) -> int:
+    lines, ok = down(rig, t3, seat)
+    for line in lines:
+        print(line)
+    return 0 if ok else 1
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     t3 = T3Cli()
     try:
+        if args.command == "login":
+            _login(args.access)
+            return 0
         rig = load_rig(args.rig)
         if args.command == "validate":
             _validate(rig)
         elif args.command == "up":
             _up(rig, t3)
+        elif args.command == "down":
+            return _down(rig, t3, args.seat)
         elif args.command == "ps":
             _ps(rig, t3, args.json)
         elif args.command == "send":

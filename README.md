@@ -20,6 +20,36 @@ uv run t3rig send examples/two-seat/rig.yaml --pod dev "Hello"       # or --all 
 Messages carry a `From:`/`To:` header unless you pass `--raw`. Seats are told to name themselves with
 `--from`. It's self-declared, so treat it as a label rather than proof of who sent the message.
 
+### Permissions and stopping
+
+Seats with a `permission_policy` or `effort`, and `t3rig down`, use T3's `/mcp` tools, which need a
+sign-in. Other seats use the `t3` CLI and need none, but run in T3's default mode, which may be full
+access.
+
+```sh
+uv run t3rig login --access auto                    # seats can't launch above this level
+uv run t3rig up examples/restricted/rig.yaml        # lead at auto, review at approval-required
+uv run t3rig down examples/restricted/rig.yaml      # interrupt and archive; add --seat pod.member
+```
+
+| `permission_policy` | T3 mode | Roughly |
+|---|---|---|
+| `builtin:locked` | `approval-required` | Anything that changes something waits for a person |
+| `builtin:standard` | `auto-accept-edits` | File edits run; other commands can wait |
+| `builtin:open`, `builtin:auto` | `auto` | Runs on its own, with T3's own checks |
+| `builtin:yolo` | `full-access` | Runs anything |
+
+This is an approximation: OpenRig's policies are finer-grained rules and T3 has four modes, so custom
+policy files are refused. A member's policy overrides the rig's. Each seat launches idle, and its first
+message is sent only after T3 confirms its mode, provider, model and effort. A mismatch is archived.
+
+The credential is kept in `~/.config/t3rig/credentials.json`, readable only by you, for 30 days. Stop
+`watch` before `down`, or its pings to the archived dispatcher will fail.
+
+Modes aren't a security boundary. They make a seat ask before acting, but `locked` seats still run
+read-only commands, and a seat allowed to run shell commands could use your `t3` CLI or credential.
+Restricted seats also have to ask before running `t3rig send`, so `watch` is how they report back.
+
 ### Pinging the dispatcher
 
 `t3rig watch` keeps a seat's dispatcher informed, so nothing depends on an agent remembering to
@@ -41,6 +71,7 @@ uv run t3rig watch examples/two-seat/rig.yaml
 - It only works while running. It's a foreground command, not a daemon.
 - It polls, every 15 seconds by default (`--interval`), so a ping can lag by that much.
 - A dispatcher can see that a seat is waiting but can't answer for it. A person answers in T3.
+  T3's tools let an agent answer questions, but not approve permission requests.
 
 A seat's thread is the one titled `pod-member@rig` (OpenRig's seat name), so renaming a thread
 disconnects it from its seat.
@@ -55,7 +86,7 @@ disconnects it from its seat.
 - `claude-code` and `codex` seats. A `codex` seat needs a model.
 
 A spec using anything else is refused with a clear error, including skills, plugins, startup actions,
-`effort`, services, continuity policies and permission settings.
+custom permission policies, services and continuity policies.
 
 Unlike OpenRig, all instructions go in the seat's first message, in OpenRig's layer order, whatever
 their `delivery_hint`. Nothing is written to the repo, so a long-running seat can lose them when its
@@ -65,12 +96,8 @@ conversation is compacted.
 
 - `delegates_to` edges decide who `watch` pings. Otherwise edges are only described in each seat's
   first message, so nothing enforces them. `delegates_to` cycles are refused.
-- Threads run in T3's default runtime mode, which may be full access. A rig's permission settings
-  aren't supported.
 - Threads start in the T3 project's root. A seat's `cwd` must be inside a T3 project, and the seat
   is told to change to it.
-- There's no `down` yet, because the `t3` CLI can't archive threads. Archive them in T3 instead; the
-  next `up` starts those seats fresh.
 
 ## Development
 

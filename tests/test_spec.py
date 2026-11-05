@@ -160,10 +160,46 @@ def test_lifecycle_defaults_pass_and_others_are_refused(tmp_path: Path) -> None:
     assert "restore_policy" in errors_for(write_rig(tmp_path, claude, agent_with(bad)))
 
 
-def test_refuses_effort_for_now(tmp_path: Path) -> None:
+def test_effort_precedence_is_member_then_profile_then_agent(tmp_path: Path) -> None:
+    claude = MEMBER % ("a", "claude-code")
+    defaults = "defaults: {effort: low}"
+    prefs = ", preferences: {effort: high}"
+    assert (
+        load_rig(write_rig(tmp_path, pods(claude), agent_with(defaults))).seats[0].effort == "low"
+    )
+    rig = load_rig(write_rig(tmp_path, pods(claude), agent_with(defaults, prefs)))
+    assert rig.seats[0].effort == "high"
+    own = claude.replace("cwd: .", "cwd: ., effort: max")
+    assert (
+        load_rig(write_rig(tmp_path, pods(own), agent_with(defaults, prefs))).seats[0].effort
+        == "max"
+    )
+
+
+def test_refuses_advisor(tmp_path: Path) -> None:
     claude = pods(MEMBER % ("a", "claude-code"))
-    effort = "defaults: {effort: high}"
-    assert "defaults.effort" in errors_for(write_rig(tmp_path, claude, agent_with(effort)))
+    advisor = "defaults: {advisor: x}"
+    assert "defaults.advisor" in errors_for(write_rig(tmp_path, claude, agent_with(advisor)))
+
+
+def test_member_policy_overrides_rig_policy(tmp_path: Path) -> None:
+    claude = MEMBER % ("a", "claude-code")
+    own = (MEMBER % ("b", "claude-code")).replace(
+        "cwd: .", "cwd: ., permission_policy: builtin:locked"
+    )
+    body = "permission_policy: builtin:auto\n" + pods(claude, own)
+    seats = load_rig(write_rig(tmp_path, body)).seats
+    assert [s.runtime_mode for s in seats] == ["auto", "approval-required"]
+
+
+def test_no_policy_means_no_mode(tmp_path: Path) -> None:
+    rig = load_rig(write_rig(tmp_path, pods(MEMBER % ("a", "claude-code"))))
+    assert rig.seats[0].runtime_mode is None
+
+
+def test_refuses_custom_policies(tmp_path: Path) -> None:
+    body = "permission_policy: policies/mine.policy.md\n" + pods(MEMBER % ("a", "claude-code"))
+    assert "custom policies can't be applied" in errors_for(write_rig(tmp_path, body))
 
 
 def write_imports(root: Path, agent: str, *shared: tuple[str, str]) -> Path:

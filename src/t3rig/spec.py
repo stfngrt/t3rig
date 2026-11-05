@@ -10,9 +10,17 @@ from typing import Any
 
 import yaml
 
-RIG_KEYS = {"version", "name", "summary", "culture_file", "startup", "pods", "edges"}
-OPENRIG_ONLY_RIG_KEYS = {
+RIG_KEYS = {
+    "version",
+    "name",
+    "summary",
+    "culture_file",
     "permission_policy",
+    "startup",
+    "pods",
+    "edges",
+}
+OPENRIG_ONLY_RIG_KEYS = {
     "managed_blocks",
     "docs",
     "services",
@@ -22,13 +30,22 @@ OPENRIG_ONLY_RIG_KEYS = {
 }
 POD_KEYS = {"id", "label", "summary", "startup", "members", "edges"}
 OPENRIG_ONLY_POD_KEYS = {"continuity_policy"}
-MEMBER_KEYS = {"id", "label", "agent_ref", "profile", "runtime", "model", "cwd", "startup"}
+MEMBER_KEYS = {
+    "id",
+    "label",
+    "agent_ref",
+    "profile",
+    "runtime",
+    "model",
+    "effort",
+    "permission_policy",
+    "cwd",
+    "startup",
+}
 OPENRIG_ONLY_MEMBER_KEYS = {
     "codex_config_profile",
-    "effort",
     "advisor",
     "role",
-    "permission_policy",
     "claude_permissions",
     "claude_token",
     "claude_mcp",
@@ -59,8 +76,17 @@ AGENT_KEYS = {
 }
 IMPORT_KEYS = {"ref", "version"}
 PROFILE_KEYS = {"summary", "description", "preferences", "uses", "startup", "lifecycle"}
-PREFERENCE_KEYS = {"runtime", "model", "lifecycle"}
-OPENRIG_ONLY_PREFERENCE_KEYS = {"effort", "advisor"}
+PREFERENCE_KEYS = {"runtime", "model", "effort", "lifecycle"}
+OPENRIG_ONLY_PREFERENCE_KEYS = {"advisor"}
+# T3 has four modes and OpenRig's policies are finer-grained rules, so this is approximate. Each
+# maps to a mode no looser where one exists; `open` and `auto` rely on T3's auto mode's own checks.
+POLICY_MODES = {
+    "builtin:locked": "approval-required",
+    "builtin:standard": "auto-accept-edits",
+    "builtin:open": "auto",
+    "builtin:auto": "auto",
+    "builtin:yolo": "full-access",
+}
 # Lifecycle settings matching how a T3 thread already behaves, so they change nothing.
 LIFECYCLE_DEFAULTS = {
     "execution_mode": "interactive_resident",
@@ -103,6 +129,8 @@ class Seat:
     profile: str
     label: str | None = None
     model: str | None = None
+    effort: str | None = None
+    runtime_mode: str | None = None
     startup: tuple[StartupText, ...] = ()
 
     @property
@@ -242,20 +270,35 @@ def _check_lifecycle(raw: Any, where: str, errors: list[str]) -> None:
             errors.append(f"{where}.{key}: only {LIFECYCLE_DEFAULTS.get(key)!r} works with t3rig")
 
 
-def _parse_preferences(raw: Any, where: str, errors: list[str]) -> str | None:
-    """Check agent defaults or profile preferences, and return the model they set."""
+def _parse_policy(raw: Any, where: str, errors: list[str]) -> str | None:
+    """The T3 mode for an OpenRig permission_policy."""
     if raw is None:
         return None
+    if raw not in POLICY_MODES:
+        errors.append(
+            f"{where}: must be one of {sorted(POLICY_MODES)}; custom policies can't be applied"
+        )
+        return None
+    return POLICY_MODES[raw]
+
+
+def _parse_preferences(raw: Any, where: str, errors: list[str]) -> tuple[str | None, str | None]:
+    """Check agent defaults or profile preferences, and return their model and effort."""
+    if raw is None:
+        return None, None
     if not isinstance(raw, dict):
         errors.append(f"{where}: must be a mapping")
-        return None
+        return None, None
     _check_keys(raw, PREFERENCE_KEYS, OPENRIG_ONLY_PREFERENCE_KEYS, where, errors)
     _check_lifecycle(raw.get("lifecycle"), f"{where}.lifecycle", errors)
-    model = raw.get("model")
-    if model is not None and not isinstance(model, str):
-        errors.append(f"{where}.model: must be a string")
-        return None
-    return model
+    values = []
+    for key in ("model", "effort"):
+        value = raw.get(key)
+        if value is not None and not isinstance(value, str):
+            errors.append(f"{where}.{key}: must be a string")
+            value = None
+        values.append(value)
+    return values[0], values[1]
 
 
 @dataclass(frozen=True)
@@ -384,15 +427,15 @@ def _selected_guidance(
 
 def _load_agent(
     agent_ref: str, profile: str, rig_root: Path, where: str, errors: list[str]
-) -> tuple[str | None, list[StartupText]]:
-    """Return the model an agent spec prefers, and its instructions in delivery order."""
+) -> tuple[str | None, str | None, list[StartupText]]:
+    """Return the model and effort an agent spec prefers, and its instructions in order."""
     directory = _agent_dir(agent_ref, rig_root)
     if directory is None:
         errors.append(f"{where}.agent_ref: must be local:<relative path> or path:<absolute path>")
-        return None, []
+        return None, None, []
     agent = _read_yaml_mapping(directory / "agent.yaml", f"{where}.agent_ref", errors)
     if agent is None:
-        return None, []
+        return None, None, []
     _check_keys(agent, AGENT_KEYS, set(), f"{where} agent", errors)
     for key in ("name", "version"):
         if not isinstance(agent.get(key), str):
@@ -401,7 +444,7 @@ def _load_agent(
     selected = profiles.get(profile) if isinstance(profiles, dict) else None
     if not isinstance(selected, dict):
         errors.append(f"{where}.profile: agent has no profile {profile!r}")
-        return None, []
+        return None, None, []
     profile_where = f"{where} profile"
     _check_keys(selected, PROFILE_KEYS, set(), profile_where, errors)
     _check_lifecycle(selected.get("lifecycle"), f"{profile_where}.lifecycle", errors)
@@ -411,8 +454,10 @@ def _load_agent(
         uses = {}
     _check_keys(uses, USES_KEYS, OPENRIG_ONLY_USES_KEYS, f"{profile_where}.uses", errors)
 
-    default_model = _parse_preferences(agent.get("defaults"), f"{where} agent.defaults", errors)
-    preferred = _parse_preferences(
+    default_model, default_effort = _parse_preferences(
+        agent.get("defaults"), f"{where} agent.defaults", errors
+    )
+    preferred_model, preferred_effort = _parse_preferences(
         selected.get("preferences"), f"{profile_where}.preferences", errors
     )
     imports = _load_imports(agent, directory, f"{where} agent.imports", errors)
@@ -421,7 +466,7 @@ def _load_agent(
         *_parse_startup(agent.get("startup"), directory, f"{where} agent.startup", errors),
         *_parse_startup(selected.get("startup"), directory, f"{profile_where}.startup", errors),
     ]
-    return preferred or default_model, texts
+    return preferred_model or default_model, preferred_effort or default_effort, texts
 
 
 def _parse_seat(
@@ -429,6 +474,7 @@ def _parse_seat(
     pod_id: str,
     rig_root: Path,
     shared_startup: list[StartupText],
+    rig_mode: str | None,
     where: str,
     errors: list[str],
 ) -> Seat | None:
@@ -441,7 +487,7 @@ def _parse_seat(
         if not isinstance(member.get(key), str) or not member[key]:
             errors.append(f"{where}.{key}: required string")
             valid = False
-    for key in ("label", "model"):
+    for key in ("label", "model", "effort"):
         if key in member and not isinstance(member[key], str):
             errors.append(f"{where}.{key}: must be a string")
             valid = False
@@ -451,7 +497,7 @@ def _parse_seat(
         valid = False
     if not valid:
         return None
-    agent_model, agent_startup = _load_agent(
+    agent_model, agent_effort, agent_startup = _load_agent(
         member["agent_ref"], member["profile"], rig_root, where, errors
     )
     member_startup = _parse_startup(member.get("startup"), rig_root, f"{where}.startup", errors)
@@ -467,6 +513,11 @@ def _parse_seat(
         profile=member["profile"],
         label=member.get("label"),
         model=member.get("model") or agent_model,
+        effort=member.get("effort") or agent_effort,
+        runtime_mode=_parse_policy(
+            member.get("permission_policy"), f"{where}.permission_policy", errors
+        )
+        or rig_mode,
         # OpenRig's layer order: agent, profile, culture, rig, pod, member.
         startup=(*agent_startup, *shared_startup, *member_startup),
     )
@@ -540,6 +591,7 @@ def load_rig(path: str | Path) -> Rig:
     if not isinstance(name, str) or not RIG_NAME_PATTERN.match(name):
         errors.append(f"rig.name: must be letters, digits, '.', '-' or '_' (got {name!r})")
 
+    rig_mode = _parse_policy(data.get("permission_policy"), "rig.permission_policy", errors)
     rig_startup: list[StartupText] = []
     culture_file = data.get("culture_file")
     if culture_file is not None:
@@ -581,7 +633,7 @@ def load_rig(path: str | Path) -> Rig:
         for member_index, member in enumerate(members):
             member_where = f"{where}.members[{member_index}]"
             shared = [*rig_startup, *pod_startup]
-            seat = _parse_seat(member, pod_id, rig_root, shared, member_where, errors)
+            seat = _parse_seat(member, pod_id, rig_root, shared, rig_mode, member_where, errors)
             if seat is None:
                 continue
             if seat.id in seen_members:

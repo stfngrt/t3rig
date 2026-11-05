@@ -11,6 +11,18 @@ class T3Error(Exception):
     """A `t3` command failed or couldn't run."""
 
 
+def _parse_json(output: str) -> Any:
+    """Read `--json` output, skipping any log lines `t3` printed to stdout ahead of it."""
+    lines = output.splitlines()
+    for index, line in enumerate(lines):
+        if line.startswith(("{", "[")):
+            try:
+                return json.loads("\n".join(lines[index:]))
+            except ValueError:
+                continue
+    raise T3Error(f"`t3` didn't return JSON: {output[:200]}")
+
+
 class T3Cli:
     def __init__(self, executable: str = "t3") -> None:
         self.executable = executable
@@ -37,12 +49,12 @@ class T3Cli:
     def list_threads(self, project: str) -> list[dict[str, Any]]:
         """Threads in the project containing this path, newest first."""
         output = self._run(["thread", "list", "--project", project, "--json"])
-        return json.loads(output)
+        return _parse_json(output)
 
     def show_thread(self, thread_id: str, messages: int = 1) -> dict[str, Any]:
         """A thread's state under "thread" and its latest messages under "messages"."""
         args = ["thread", "show", "--messages", str(messages), "--json", thread_id]
-        return json.loads(self._run(args))
+        return _parse_json(self._run(args))
 
     def start_thread(
         self, project: str, title: str, message: str, provider: str | None, model: str | None

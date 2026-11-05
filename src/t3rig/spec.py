@@ -10,20 +10,19 @@ from typing import Any
 
 import yaml
 
-RIG_KEYS = {"version", "name", "summary", "culture_file", "pods", "edges"}
+RIG_KEYS = {"version", "name", "summary", "culture_file", "startup", "pods", "edges"}
 OPENRIG_ONLY_RIG_KEYS = {
     "permission_policy",
     "managed_blocks",
     "docs",
-    "startup",
     "services",
     "workspace",
     "non_interruptive",
     "env",
 }
-POD_KEYS = {"id", "label", "summary", "members", "edges"}
-OPENRIG_ONLY_POD_KEYS = {"continuity_policy", "startup"}
-MEMBER_KEYS = {"id", "label", "agent_ref", "profile", "runtime", "model", "cwd"}
+POD_KEYS = {"id", "label", "summary", "startup", "members", "edges"}
+OPENRIG_ONLY_POD_KEYS = {"continuity_policy"}
+MEMBER_KEYS = {"id", "label", "agent_ref", "profile", "runtime", "model", "cwd", "startup"}
 OPENRIG_ONLY_MEMBER_KEYS = {
     "codex_config_profile",
     "effort",
@@ -37,7 +36,6 @@ OPENRIG_ONLY_MEMBER_KEYS = {
     "restore_policy",
     "compaction_strategy",
     "mechanic",
-    "startup",
     "session_source",
     "starter_ref",
     "env",
@@ -49,8 +47,22 @@ OPENRIG_ONLY_MEMBER_KEYS = {
 EDGE_KEYS = {"kind", "from", "to"}
 EDGE_KINDS = {"delegates_to", "spawned_by", "can_observe", "collaborates_with", "escalates_to"}
 RUNTIMES = {"claude-code", "codex"}
-AGENT_KEYS = {"name", "version", "description", "resources", "profiles"}
-PROFILE_KEYS = {"description", "uses"}
+AGENT_KEYS = {"name", "version", "description", "defaults", "resources", "profiles", "startup"}
+OPENRIG_ONLY_AGENT_KEYS = {"imports"}
+PROFILE_KEYS = {"summary", "description", "preferences", "uses", "startup", "lifecycle"}
+PREFERENCE_KEYS = {"runtime", "model", "lifecycle"}
+OPENRIG_ONLY_PREFERENCE_KEYS = {"effort", "advisor"}
+# Lifecycle settings matching how a T3 thread already behaves, so they change nothing.
+LIFECYCLE_DEFAULTS = {
+    "execution_mode": "interactive_resident",
+    "compaction_strategy": "default-compaction",
+    "restore_policy": "resume_if_possible",
+}
+USES_KEYS = {"guidance"}
+OPENRIG_ONLY_USES_KEYS = {"skills", "subagents", "plugins", "runtime_resources"}
+STARTUP_KEYS = {"files", "actions"}
+STARTUP_FILE_KEYS = {"path", "orientation", "delivery_hint", "required", "applies_on"}
+TEXT_DELIVERY_HINTS = {"auto", "guidance_merge", "send_text"}
 
 ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 RIG_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+$")
@@ -65,6 +77,14 @@ class SpecError(Exception):
 
 
 @dataclass(frozen=True)
+class StartupText:
+    """Instructions for a seat, delivered in its first message."""
+
+    path: str
+    text: str
+
+
+@dataclass(frozen=True)
 class Seat:
     pod: str
     id: str
@@ -74,6 +94,7 @@ class Seat:
     profile: str
     label: str | None = None
     model: str | None = None
+    startup: tuple[StartupText, ...] = ()
 
     @property
     def qualified_id(self) -> str:
@@ -94,7 +115,6 @@ class Rig:
     seats: tuple[Seat, ...]
     edges: tuple[Edge, ...]
     summary: str | None = None
-    culture: str | None = None
 
     def session_name(self, seat: Seat) -> str:
         """OpenRig's canonical seat name, used here as the T3 thread title."""
@@ -145,41 +165,159 @@ def _is_safe_relative(path: str) -> bool:
 
 
 def _agent_dir(agent_ref: str, rig_root: Path) -> Path | None:
-    if agent_ref.startswith("local:") and _is_safe_relative(agent_ref.removeprefix("local:")):
+    # Unlike startup files, OpenRig lets agent_ref climb out of the rig's folder.
+    if agent_ref.startswith("local:") and not Path(agent_ref.removeprefix("local:")).is_absolute():
         return rig_root / agent_ref.removeprefix("local:")
     if agent_ref.startswith("path:") and Path(agent_ref.removeprefix("path:")).is_absolute():
         return Path(agent_ref.removeprefix("path:"))
     return None
 
 
-def _check_agent(
+def _read_text(path: Path, where: str, errors: list[str]) -> str | None:
+    try:
+        return path.read_text()
+    except (OSError, UnicodeDecodeError) as error:
+        errors.append(f"{where}: can't read {path}: {error}")
+        return None
+
+
+def _parse_startup(raw: Any, base: Path, where: str, errors: list[str]) -> list[StartupText]:
+    """A startup block's files, as text. OpenRig places some in the harness; here all are text."""
+    if raw is None:
+        return []
+    if not isinstance(raw, dict):
+        errors.append(f"{where}: must be a mapping")
+        return []
+    _check_keys(raw, STARTUP_KEYS, set(), where, errors)
+    if raw.get("actions"):
+        errors.append(f"{where}.actions: startup actions aren't supported by t3rig yet")
+    files = raw.get("files") or []
+    if not isinstance(files, list):
+        errors.append(f"{where}.files: must be a list")
+        return []
+    texts = []
+    for index, entry in enumerate(files):
+        file_where = f"{where}.files[{index}]"
+        if not isinstance(entry, dict):
+            errors.append(f"{file_where}: must be a mapping")
+            continue
+        _check_keys(entry, STARTUP_FILE_KEYS, set(), file_where, errors)
+        path = entry.get("path")
+        if not isinstance(path, str) or not _is_safe_relative(path):
+            errors.append(f"{file_where}.path: must be a relative path inside its folder")
+            continue
+        hint = entry.get("delivery_hint", "auto")
+        if hint not in TEXT_DELIVERY_HINTS or (hint == "auto" and path.endswith("SKILL.md")):
+            errors.append(f"{file_where}: installing skills isn't supported by t3rig yet")
+            continue
+        applies_on = entry.get("applies_on", ["fresh_start"])
+        if not isinstance(applies_on, list) or "fresh_start" not in applies_on:
+            continue  # A new thread is always a fresh start.
+        target = base / path
+        if not target.exists() and entry.get("required", True) is False:
+            continue
+        text = _read_text(target, file_where, errors)
+        if text is not None:
+            texts.append(StartupText(path, text))
+    return texts
+
+
+def _check_lifecycle(raw: Any, where: str, errors: list[str]) -> None:
+    if raw is None:
+        return
+    if not isinstance(raw, dict):
+        errors.append(f"{where}: must be a mapping")
+        return
+    for key, value in raw.items():
+        if LIFECYCLE_DEFAULTS.get(key) != value:
+            errors.append(f"{where}.{key}: only {LIFECYCLE_DEFAULTS.get(key)!r} works with t3rig")
+
+
+def _parse_preferences(raw: Any, where: str, errors: list[str]) -> str | None:
+    """Check agent defaults or profile preferences, and return the model they set."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        errors.append(f"{where}: must be a mapping")
+        return None
+    _check_keys(raw, PREFERENCE_KEYS, OPENRIG_ONLY_PREFERENCE_KEYS, where, errors)
+    _check_lifecycle(raw.get("lifecycle"), f"{where}.lifecycle", errors)
+    model = raw.get("model")
+    if model is not None and not isinstance(model, str):
+        errors.append(f"{where}.model: must be a string")
+        return None
+    return model
+
+
+def _selected_guidance(
+    agent: dict[str, Any], uses: dict[str, Any], base: Path, where: str, errors: list[str]
+) -> list[StartupText]:
+    selected = uses.get("guidance") or []
+    resources = agent.get("resources") or {}
+    pool = resources.get("guidance") if isinstance(resources, dict) else None
+    paths = {item.get("id"): item.get("path") for item in pool or [] if isinstance(item, dict)}
+    texts = []
+    for guidance_id in selected if isinstance(selected, list) else []:
+        path = paths.get(guidance_id)
+        if not isinstance(path, str) or not _is_safe_relative(path):
+            errors.append(
+                f"{where}.guidance: no guidance resource {guidance_id!r} with a safe path"
+            )
+            continue
+        text = _read_text(base / path, f"{where}.guidance", errors)
+        if text is not None:
+            texts.append(StartupText(path, text))
+    return texts
+
+
+def _load_agent(
     agent_ref: str, profile: str, rig_root: Path, where: str, errors: list[str]
-) -> None:
+) -> tuple[str | None, list[StartupText]]:
+    """Return the model an agent spec prefers, and its instructions in delivery order."""
     directory = _agent_dir(agent_ref, rig_root)
     if directory is None:
         errors.append(f"{where}.agent_ref: must be local:<relative path> or path:<absolute path>")
-        return
+        return None, []
     agent = _read_yaml_mapping(directory / "agent.yaml", f"{where}.agent_ref", errors)
     if agent is None:
-        return
-    # Skills and guidance aren't placed yet, so an agent that declares any is refused.
-    _check_keys(agent, AGENT_KEYS, set(agent) - AGENT_KEYS, f"{where} agent", errors)
-    resources = agent.get("resources") or {}
-    if not isinstance(resources, dict) or any(resources.values()):
-        errors.append(f"{where} agent.resources: placing resources isn't supported by t3rig yet")
+        return None, []
+    _check_keys(agent, AGENT_KEYS, OPENRIG_ONLY_AGENT_KEYS, f"{where} agent", errors)
+    for key in ("name", "version"):
+        if not isinstance(agent.get(key), str):
+            errors.append(f"{where} agent.{key}: required string")
     profiles = agent.get("profiles") or {}
     selected = profiles.get(profile) if isinstance(profiles, dict) else None
     if not isinstance(selected, dict):
         errors.append(f"{where}.profile: agent has no profile {profile!r}")
-        return
-    _check_keys(selected, PROFILE_KEYS, set(selected) - PROFILE_KEYS, f"{where} profile", errors)
+        return None, []
+    profile_where = f"{where} profile"
+    _check_keys(selected, PROFILE_KEYS, set(), profile_where, errors)
+    _check_lifecycle(selected.get("lifecycle"), f"{profile_where}.lifecycle", errors)
     uses = selected.get("uses") or {}
-    if not isinstance(uses, dict) or any(uses.values()):
-        errors.append(f"{where} profile.uses: placing resources isn't supported by t3rig yet")
+    if not isinstance(uses, dict):
+        errors.append(f"{profile_where}.uses: must be a mapping")
+        uses = {}
+    _check_keys(uses, USES_KEYS, OPENRIG_ONLY_USES_KEYS, f"{profile_where}.uses", errors)
+
+    default_model = _parse_preferences(agent.get("defaults"), f"{where} agent.defaults", errors)
+    preferred = _parse_preferences(
+        selected.get("preferences"), f"{profile_where}.preferences", errors
+    )
+    texts = [
+        *_selected_guidance(agent, uses, directory, f"{profile_where}.uses", errors),
+        *_parse_startup(agent.get("startup"), directory, f"{where} agent.startup", errors),
+        *_parse_startup(selected.get("startup"), directory, f"{profile_where}.startup", errors),
+    ]
+    return preferred or default_model, texts
 
 
 def _parse_seat(
-    member: Any, pod_id: str, rig_root: Path, where: str, errors: list[str]
+    member: Any,
+    pod_id: str,
+    rig_root: Path,
+    shared_startup: list[StartupText],
+    where: str,
+    errors: list[str],
 ) -> Seat | None:
     if not isinstance(member, dict):
         errors.append(f"{where}: must be a mapping")
@@ -200,7 +338,10 @@ def _parse_seat(
         valid = False
     if not valid:
         return None
-    _check_agent(member["agent_ref"], member["profile"], rig_root, where, errors)
+    agent_model, agent_startup = _load_agent(
+        member["agent_ref"], member["profile"], rig_root, where, errors
+    )
+    member_startup = _parse_startup(member.get("startup"), rig_root, f"{where}.startup", errors)
     cwd = (rig_root / Path(member["cwd"]).expanduser()).resolve()
     if not cwd.is_dir():
         errors.append(f"{where}.cwd: {cwd} isn't a directory")
@@ -212,7 +353,9 @@ def _parse_seat(
         agent_ref=member["agent_ref"],
         profile=member["profile"],
         label=member.get("label"),
-        model=member.get("model"),
+        model=member.get("model") or agent_model,
+        # OpenRig's layer order: agent, profile, culture, rig, pod, member.
+        startup=(*agent_startup, *shared_startup, *member_startup),
     )
 
 
@@ -284,16 +427,16 @@ def load_rig(path: str | Path) -> Rig:
     if not isinstance(name, str) or not RIG_NAME_PATTERN.match(name):
         errors.append(f"rig.name: must be letters, digits, '.', '-' or '_' (got {name!r})")
 
-    culture = None
+    rig_startup: list[StartupText] = []
     culture_file = data.get("culture_file")
     if culture_file is not None:
         if not isinstance(culture_file, str) or not _is_safe_relative(culture_file):
             errors.append("rig.culture_file: must be a relative path inside the rig")
         else:
-            try:
-                culture = (rig_root / culture_file).read_text()
-            except (OSError, UnicodeDecodeError) as error:
-                errors.append(f"rig.culture_file: can't read {culture_file}: {error}")
+            culture = _read_text(rig_root / culture_file, "rig.culture_file", errors)
+            if culture is not None:
+                rig_startup.append(StartupText(culture_file, culture))
+    rig_startup += _parse_startup(data.get("startup"), rig_root, "rig.startup", errors)
 
     seats: list[Seat] = []
     pod_edges: list[tuple[Edge, str]] = []
@@ -316,6 +459,7 @@ def load_rig(path: str | Path) -> Rig:
         if pod_id in seen_pods:
             errors.append(f"{where}.id: duplicate pod {pod_id!r}")
         seen_pods.add(pod_id)
+        pod_startup = _parse_startup(pod.get("startup"), rig_root, f"{where}.startup", errors)
         members = pod.get("members")
         if not isinstance(members, list) or not members:
             errors.append(f"{where}.members: must be a non-empty list")
@@ -323,7 +467,8 @@ def load_rig(path: str | Path) -> Rig:
         seen_members: set[str] = set()
         for member_index, member in enumerate(members):
             member_where = f"{where}.members[{member_index}]"
-            seat = _parse_seat(member, pod_id, rig_root, member_where, errors)
+            shared = [*rig_startup, *pod_startup]
+            seat = _parse_seat(member, pod_id, rig_root, shared, member_where, errors)
             if seat is None:
                 continue
             if seat.id in seen_members:
@@ -358,5 +503,4 @@ def load_rig(path: str | Path) -> Rig:
         seats=tuple(seats),
         edges=tuple(edges),
         summary=data.get("summary"),
-        culture=culture,
     )

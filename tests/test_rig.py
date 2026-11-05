@@ -4,7 +4,7 @@ from typing import Any
 import pytest
 
 from t3rig.rig import RigError, seat_brief, seat_rows, seat_statuses, select_seats, send, up
-from t3rig.spec import Edge, Rig, Seat
+from t3rig.spec import Edge, Rig, Seat, StartupText
 
 
 class FakeT3:
@@ -43,7 +43,13 @@ class FakeT3:
 
 
 def make_rig(tmp_path: Path, runtime: str = "claude-code", model: str | None = None) -> Rig:
-    common = {"pod": "dev", "cwd": tmp_path, "agent_ref": "local:a", "profile": "default"}
+    common = {
+        "pod": "dev",
+        "cwd": tmp_path,
+        "agent_ref": "local:a",
+        "profile": "default",
+        "startup": (StartupText("culture.md", "Be honest."),),
+    }
     return Rig(
         name="r",
         path=tmp_path / "rig.yaml",
@@ -52,7 +58,6 @@ def make_rig(tmp_path: Path, runtime: str = "claude-code", model: str | None = N
             Seat(id="impl", runtime=runtime, model=model, **common),
         ),
         edges=(Edge("delegates_to", "dev.lead", "dev.impl"),),
-        culture="Be honest.",
     )
 
 
@@ -161,4 +166,7 @@ def test_brief_covers_role_peers_and_culture(tmp_path: Path) -> None:
     rig = make_rig(tmp_path)
     brief = seat_brief(rig, rig.seats[0])
     assert "seat dev.lead" in brief and "You delegates_to dev.impl" in brief
-    assert "Be honest." in brief and "-m t3rig send --from dev.lead" in brief
+    assert (
+        "Instructions from culture.md:\nBe honest." in brief
+        and "-m t3rig send --from dev.lead" in brief
+    )

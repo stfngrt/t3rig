@@ -1,7 +1,11 @@
 name: lead
 version: "1.0.0"
-resources:
-  skills: []
+defaults:
+  model: claude-haiku-5-5
+startup:
+  files:
+    - path: role.md
+      delivery_hint: send_text
 profiles:
   default:
     uses:

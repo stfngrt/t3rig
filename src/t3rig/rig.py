@@ -106,8 +106,8 @@ def seat_brief(rig: Rig, seat: Seat) -> str:
     peers = _peer_lines(rig, seat)
     if peers:
         parts.append("Your relationships:\n" + "\n".join(peers))
-    if rig.culture:
-        parts.append(f"Team culture:\n{rig.culture.strip()}")
+    for item in seat.startup:
+        parts.append(f"Instructions from {item.path}:\n{item.text.strip()}")
     parts.append("Reply with one short line saying you're ready, then wait for instructions.")
     return "\n\n".join(parts)
 

@@ -16,6 +16,7 @@ class FakeT3:
         self.shown: list[str] = []
         self.send_error: Exception | None = None
         self.reply = "all done"
+        self.role = "assistant"
 
     def set(self, title: str, run: int, status: str = "completed", pending: int = 0) -> None:
         self.threads[title] = {
@@ -34,7 +35,7 @@ class FakeT3:
     def show_thread(self, thread_id: str, messages: int = 1) -> dict[str, Any]:
         self.shown.append(thread_id)
         thread = next(t for t in self.threads.values() if t["threadId"] == thread_id)
-        return {"thread": thread, "messages": [{"role": "assistant", "text": self.reply}]}
+        return {"thread": thread, "messages": [{"role": self.role, "text": self.reply}]}
 
     def send(self, thread_id: str, message: str, wait: bool = False) -> str:
         if self.send_error:
@@ -331,3 +332,29 @@ def test_waiting_approval_reads_recent_pages_and_ignores_answered_ones() -> None
     assert waiting_approval(tools, "t", 250) == "first"
     assert tools.calls[0]["afterPosition"] == 150 and tools.calls[1]["afterPosition"] == 300
     assert waiting_approval(ActivityTools([{"items": []}]), "t", 3) is None
+
+
+def test_stopped_run_says_it_has_no_result(rig: Rig) -> None:
+    t3 = FakeT3()
+    started(t3)
+    watcher, _ = make_watcher(rig, t3)
+    watcher.tick()
+    t3.reply = "partial thoughts"
+    t3.set(IMPL, 2, status="interrupted")
+    watcher.tick()
+    message = t3.sent[0][1]
+    assert "dev.impl's run was stopped before it finished (interrupted)" in message
+    assert "no result" in message
+    assert "partial thoughts" not in message and "finished a run" not in message
+
+
+def test_message_sent_to_a_seat_is_not_shown_as_its_reply(rig: Rig) -> None:
+    t3 = FakeT3()
+    started(t3)
+    watcher, _ = make_watcher(rig, t3)
+    watcher.tick()
+    t3.reply, t3.role = "Please review the diff", "user"
+    t3.set(IMPL, 2)
+    watcher.tick()
+    assert "dev.impl finished a run (completed)." in t3.sent[0][1]
+    assert "Last reply" not in t3.sent[0][1] and "Please review" not in t3.sent[0][1]

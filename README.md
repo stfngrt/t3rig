@@ -52,6 +52,8 @@ The credential is kept in `~/.config/t3rig/credentials.json`, readable only by y
 Modes aren't a security boundary. They make a seat ask before acting, but `locked` seats still run
 read-only commands, and a seat allowed to run shell commands could use your `t3` CLI or credential.
 Restricted seats also have to ask before running `t3rig send`, so `watch` is how they report back.
+They can also stop for approval on shell commands that read files outside the repo, so have a
+dispatcher pass along what they need.
 
 ### Pinging the dispatcher
 
@@ -66,7 +68,7 @@ uv run t3rig watch examples/two-seat/rig.yaml
   approval waiting. Seats that change together share one ping. A seat's reply to its first message
   doesn't count.
 - A ping is a short pointer with a one-line excerpt and a link. The dispatcher reads the thread for
-  the rest.
+  the rest. A run stopped partway says so and shows no excerpt, since it has no result.
 - A failed ping is retried on the next check, and prints an `ALERT` after three failures. A stuck
   seat with no dispatcher also prints one, and so does a seat stopped at a usage limit, which `watch`
   recognizes from the wording of its last reply.

@@ -37,6 +37,7 @@ EXCERPT_CHARS = 120
 ALERT_AFTER_FAILURES = 3
 SENDER = "t3rig watch"
 ACTIVITY_WINDOW = 100
+STOPPED_STATUSES = {"interrupted", "cancelled"}
 # T3 has no field for this, so it's read from the failed run's last reply.
 USAGE_LIMIT = re.compile(r"\b(usage|rate|session|weekly|\d+-hour) limit\b|hit your .*limit", re.I)
 CLOSING = (
@@ -185,14 +186,20 @@ def _check_seat(
             # History from before watching, or the seat's reply to its first message.
             updates["run"] = run
         else:
-            messages = detail.get("messages") or [{}]
-            reply = excerpt(messages[-1].get("text") or "")
+            # The newest message can be one sent to the seat, which isn't a reply.
+            last = (detail.get("messages") or [{}])[-1]
+            reply = excerpt(last.get("text") or "") if last.get("role") == "assistant" else ""
             said = f' Last reply: "{reply}"' if reply else ""
             limited = thread.get("status") != "completed" and USAGE_LIMIT.search(reply)
             if limited:
                 prefix = (
                     f"{seat} stopped at a usage limit and won't continue on its own; "
                     f"message it again after the limit resets.{said}"
+                )
+            elif thread.get("status") in STOPPED_STATUSES:
+                prefix = (
+                    f"{seat}'s run was stopped before it finished ({thread.get('status')}), "
+                    "so treat it as having no result."
                 )
             else:
                 prefix = f"{seat} finished a run ({thread.get('status')}).{said}"

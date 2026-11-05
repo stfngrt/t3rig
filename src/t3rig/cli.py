@@ -8,6 +8,7 @@ from t3rig import __version__
 from t3rig.rig import RigError, seat_statuses, send, up
 from t3rig.spec import Rig, SpecError, load_rig
 from t3rig.t3 import T3Cli, T3Error
+from t3rig.watch import watch
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -27,6 +28,15 @@ def build_parser() -> argparse.ArgumentParser:
     send_parser.add_argument("seat", help="seat as pod.member")
     send_parser.add_argument("message", help="the message, or - to read it from stdin")
     send_parser.add_argument("--wait", action="store_true", help="wait for the seat's reply")
+
+    watch_parser = commands.add_parser(
+        "watch", help="Ping each dispatcher when a seat it delegates to finishes or needs input."
+    )
+    watch_parser.add_argument("rig", help="path to rig.yaml")
+    watch_parser.add_argument(
+        "--interval", type=float, default=15, help="seconds between checks (default: 15)"
+    )
+    watch_parser.add_argument("--once", action="store_true", help="check once and exit")
     return parser
 
 
@@ -74,6 +84,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         elif args.command == "send":
             message = sys.stdin.read() if args.message == "-" else args.message
             print(send(rig, t3, args.seat, message, wait=args.wait), end="")
+        elif args.command == "watch":
+            watch(rig, t3, args.interval, once=args.once, out=lambda line: print(line, flush=True))
+    except KeyboardInterrupt:
+        return 0
     except SpecError as error:
         for problem in error.errors:
             print(f"error: {problem}", file=sys.stderr)

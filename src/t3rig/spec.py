@@ -244,6 +244,30 @@ def _check_edge_ends(
         errors.append(f"{where}: both ends are in one pod; put this edge under that pod")
 
 
+def _delegation_cycles(edges: list[Edge]) -> list[str]:
+    """`t3rig watch` pings along delegates_to edges, so a cycle would ping forever."""
+    targets: dict[str, list[str]] = {}
+    for edge in edges:
+        if edge.kind == "delegates_to":
+            targets.setdefault(edge.source, []).append(edge.target)
+
+    def reaches(start: str, goal: str, seen: set[str]) -> bool:
+        for target in targets.get(start, []):
+            if target == goal:
+                return True
+            if target not in seen:
+                seen.add(target)
+                if reaches(target, goal, seen):
+                    return True
+        return False
+
+    return [
+        f"delegates_to edges form a cycle through {seat}"
+        for seat in sorted(targets)
+        if reaches(seat, seat, set())
+    ]
+
+
 def load_rig(path: str | Path) -> Rig:
     """Parse a rig file. Raises SpecError listing every problem."""
     rig_path = Path(path).resolve()
@@ -324,6 +348,8 @@ def load_rig(path: str | Path) -> Rig:
             _check_edge_ends(edge, True, qualified, where, errors)
             edges.append(edge)
 
+    if not errors:
+        errors.extend(_delegation_cycles(edges))
     if errors:
         raise SpecError(errors)
     return Rig(

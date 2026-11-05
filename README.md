@@ -16,8 +16,30 @@ uv run t3rig ps examples/two-seat/rig.yaml         # show status and thread link
 uv run t3rig send examples/two-seat/rig.yaml dev.impl "Hello"        # add --wait for the reply
 ```
 
+### Pinging the dispatcher
+
+`t3rig watch` keeps a seat's dispatcher informed, so nothing depends on an agent remembering to
+report back. A seat's dispatcher is the seat with a `delegates_to` edge to it.
+
+```sh
+uv run t3rig watch examples/two-seat/rig.yaml
+```
+
+- It pings when a seat finishes a run, including a failed one, and when a seat has a question or
+  approval waiting. Seats that change together share one ping. A seat's reply to its first message
+  doesn't count.
+- A ping is a short pointer with a one-line excerpt and a link. The dispatcher reads the thread for
+  the rest.
+- A failed ping is retried on the next check, and prints an `ALERT` after three failures. So does a
+  stuck seat with no dispatcher.
+- It keeps what it has pinged in a small file under `~/.local/state/t3rig/`, so a restart neither
+  repeats old pings nor misses new ones. A crash can repeat a ping, but not lose one.
+- It only works while running. It's a foreground command, not a daemon.
+- It polls, every 15 seconds by default (`--interval`), so a ping can lag by that much.
+- A dispatcher can see that a seat is waiting but can't answer for it. A person answers in T3.
+
 A seat's thread is the one titled `pod-member@rig` (OpenRig's seat name), so renaming a thread
-disconnects it from its seat. No state is kept outside T3.
+disconnects it from its seat.
 
 ## What's supported
 
@@ -29,7 +51,8 @@ resources, startup files, services, continuity policies and permission settings.
 
 ## Limits
 
-- Edges are only described in each seat's first message, so nothing enforces them.
+- `delegates_to` edges decide who `watch` pings. Otherwise edges are only described in each seat's
+  first message, so nothing enforces them. `delegates_to` cycles are refused.
 - Threads run in T3's default runtime mode, which may be full access. A rig's permission settings
   aren't supported.
 - Threads start in the T3 project's root. A seat's `cwd` must be inside a T3 project, and the seat

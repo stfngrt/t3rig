@@ -33,6 +33,11 @@ def seat_statuses(rig: Rig, t3: T3Cli) -> list[SeatStatus]:
     ]
 
 
+def envelope(sender: str, recipient: str, body: str) -> str:
+    """OpenRig's From/To wrapper, so the recipient can tell who a message is from."""
+    return f"From: {sender}\nTo: {recipient}\n---\n{body}"
+
+
 def _peer_lines(rig: Rig, seat: Seat) -> list[str]:
     lines = []
     for edge in rig.edges:

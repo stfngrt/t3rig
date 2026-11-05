@@ -39,6 +39,11 @@ class T3Cli:
         output = self._run(["thread", "list", "--project", project, "--json"])
         return json.loads(output)
 
+    def show_thread(self, thread_id: str, messages: int = 1) -> dict[str, Any]:
+        """A thread's state under "thread" and its latest messages under "messages"."""
+        args = ["thread", "show", "--messages", str(messages), "--json", thread_id]
+        return json.loads(self._run(args))
+
     def start_thread(
         self, project: str, title: str, message: str, provider: str | None, model: str | None
     ) -> str:

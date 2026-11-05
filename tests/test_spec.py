@@ -79,3 +79,9 @@ def test_refuses_cross_pod_edge_within_one_pod(tmp_path: Path) -> None:
 def test_reports_every_problem(tmp_path: Path) -> None:
     errors = errors_for(write_rig(tmp_path, "surprise: 1\nservices: {kind: compose}\npods: []\n"))
     assert all(text in errors for text in ("surprise", "services", "rig.pods"))
+
+
+def test_refuses_delegation_cycles(tmp_path: Path) -> None:
+    extra = ", edges: [{kind: delegates_to, from: a, to: b}, {kind: delegates_to, from: b, to: a}]"
+    body = pods(MEMBER % ("a", "claude-code"), MEMBER % ("b", "claude-code"), extra=extra)
+    assert "form a cycle" in errors_for(write_rig(tmp_path, body))

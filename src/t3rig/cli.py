@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 
 from t3rig import __version__
 from t3rig.mcp import ACCESS_LEVELS, login
-from t3rig.rig import RigError, down, seat_rows, select_seats, send, up
+from t3rig.rig import RigError, down, log, seat_rows, select_seats, send, up
 from t3rig.spec import Rig, SpecError, load_rig
 from t3rig.t3 import T3Cli, T3Error
 from t3rig.watch import dispatchers, last_check, watch
@@ -57,6 +57,13 @@ def build_parser() -> argparse.ArgumentParser:
     send_parser.add_argument("--from", dest="sender", metavar="SEAT", help="the sending seat")
     send_parser.add_argument("--raw", action="store_true", help="leave out the From/To header")
     send_parser.add_argument("--wait", action="store_true", help="wait for the seat's reply")
+
+    log_parser = commands.add_parser("log", help="Show a seat's latest messages.")
+    log_parser.add_argument("rig", help="path to rig.yaml")
+    log_parser.add_argument("seat", help="seat as pod.member")
+    log_parser.add_argument(
+        "--messages", type=int, default=10, help="how many messages to show (default: 10)"
+    )
 
     watch_parser = commands.add_parser(
         "watch", help="Ping each dispatcher when a seat it delegates to finishes or needs input."
@@ -183,6 +190,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             _ps(rig, t3, args.json)
         elif args.command == "send":
             return _send(rig, t3, args)
+        elif args.command == "log":
+            print(log(rig, t3, args.seat, args.messages), end="")
         elif args.command == "watch":
             watch(rig, t3, args.interval, once=args.once, out=lambda line: print(line, flush=True))
     except KeyboardInterrupt:

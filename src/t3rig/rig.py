@@ -342,3 +342,12 @@ def send(
         except T3Error as error:
             results.append(SendResult(seat, error=str(error)))
     return results
+
+
+def log(rig: Rig, t3: T3Cli, seat: str, messages: int) -> str:
+    """A seat's latest messages, as `t3 thread show` prints them."""
+    (chosen,) = select_seats(rig, seat)
+    thread = next(s.thread for s in seat_statuses(rig, t3) if s.seat == chosen)
+    if thread is None:
+        raise RigError(f"{chosen.qualified_id} has no thread; run `t3rig up` first")
+    return t3.thread_text(thread["threadId"], messages)

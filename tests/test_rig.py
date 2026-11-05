@@ -3,7 +3,17 @@ from typing import Any
 
 import pytest
 
-from t3rig.rig import RigError, down, seat_brief, seat_rows, seat_statuses, select_seats, send, up
+from t3rig.rig import (
+    RigError,
+    down,
+    log,
+    seat_brief,
+    seat_rows,
+    seat_statuses,
+    select_seats,
+    send,
+    up,
+)
 from t3rig.spec import Edge, Rig, Seat, StartupText
 from t3rig.t3 import T3Error
 
@@ -15,12 +25,17 @@ class FakeT3:
         self.started: list[dict[str, Any]] = []
         self.sent: list[tuple[str, str, bool]] = []
         self.details: dict[str, dict[str, Any]] = {}
+        self.shown: list[tuple[str, int]] = []
 
     def list_threads(self, project: str) -> list[dict[str, Any]]:
         return list(self.threads)
 
     def show_thread(self, thread_id: str, messages: int = 1) -> dict[str, Any]:
         return {"thread": self.details.get(thread_id, {})}
+
+    def thread_text(self, thread_id: str, messages: int) -> str:
+        self.shown.append((thread_id, messages))
+        return f"[assistant]\nhello from {thread_id}\n"
 
     def start_thread(self, project, title, message, provider, model) -> str:
         thread_id = f"id-{title}"
@@ -315,3 +330,19 @@ def test_down_with_nothing_running_needs_no_sign_in(tmp_path: Path) -> None:
         raise AssertionError("shouldn't sign in")
 
     assert down(make_rig(tmp_path), FakeT3(), connect=refuse) == (["no threads to stop"], True)
+
+
+def test_log_shows_the_seats_latest_messages(tmp_path: Path) -> None:
+    rig, t3 = make_rig(tmp_path), FakeT3()
+    up(rig, t3)
+    assert log(rig, t3, "dev.impl", 3) == "[assistant]\nhello from id-dev-impl@r\n"
+    assert t3.shown == [("id-dev-impl@r", 3)]
+
+
+def test_log_refuses_unknown_seat_and_seat_without_thread(tmp_path: Path) -> None:
+    rig, t3 = make_rig(tmp_path), FakeT3()
+    with pytest.raises(RigError, match="no seat 'dev.nobody'"):
+        log(rig, t3, "dev.nobody", 10)
+    with pytest.raises(RigError, match="dev.impl has no thread; run `t3rig up`"):
+        log(rig, t3, "dev.impl", 10)
+    assert t3.shown == []

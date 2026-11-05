@@ -56,6 +56,10 @@ class T3Cli:
         args = ["thread", "show", "--messages", str(messages), "--json", thread_id]
         return _parse_json(self._run(args))
 
+    def thread_text(self, thread_id: str, messages: int) -> str:
+        """`t3 thread show`'s own text for a thread and its latest messages."""
+        return self._run(["thread", "show", "--messages", str(messages), thread_id])
+
     def start_thread(
         self, project: str, title: str, message: str, provider: str | None, model: str | None
     ) -> str:

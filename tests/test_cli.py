@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from t3rig import __version__
-from t3rig.cli import main
+from t3rig.cli import build_parser, main
 
 EXAMPLE = Path(__file__).parent.parent / "examples" / "two-seat" / "rig.yaml"
 
@@ -34,3 +34,15 @@ def test_send_needs_seat_and_message(capsys: pytest.CaptureFixture[str]) -> None
     assert "needs a message" in capsys.readouterr().err
     assert main(["send", str(EXAMPLE), "--all", "--wait", "hello"]) == 1
     assert "only works with one seat" in capsys.readouterr().err
+
+
+def test_log_reports_unknown_seat(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["log", str(EXAMPLE), "dev.nobody"]) == 1
+    assert "no seat 'dev.nobody'" in capsys.readouterr().err
+
+
+def test_log_defaults_to_ten_messages() -> None:
+    assert build_parser().parse_args(["log", "rig.yaml", "dev.impl"]).messages == 10
+    assert (
+        build_parser().parse_args(["log", "rig.yaml", "dev.impl", "--messages", "3"]).messages == 3
+    )

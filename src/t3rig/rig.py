@@ -15,8 +15,8 @@ from t3rig.t3 import T3Cli, T3Error
 
 PROVIDERS = {"claude-code": "claudeAgent", "codex": "codex"}
 BUSY_STATUSES = {"preparing", "queued", "starting", "running", "waiting"}
-# Seats are told to pass --from, so a send without it is taken to be from a person. An unknown-sender
-# label made a dispatcher tell a seat to disregard a person's instructions.
+# Seats are told to pass --from, so a send without it is taken to be from a person. An
+# unknown-sender label made a dispatcher tell a seat to disregard a person's instructions.
 DEFAULT_SENDER = "operator"
 EFFORT_OPTIONS = {"claude-code": "effort", "codex": "reasoningEffort"}
 

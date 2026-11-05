@@ -46,3 +46,23 @@ def test_log_defaults_to_ten_messages() -> None:
     assert (
         build_parser().parse_args(["log", "rig.yaml", "dev.impl", "--messages", "3"]).messages == 3
     )
+
+
+def test_log_rejects_fewer_than_one_message_without_calling_t3(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    constructed = []
+
+    class FakeT3Cli:
+        def __init__(self) -> None:
+            constructed.append(self)
+
+        def __getattr__(self, name: str) -> object:
+            raise AssertionError(f"shouldn't call t3.{name}")
+
+    monkeypatch.setattr("t3rig.cli.T3Cli", FakeT3Cli)
+    assert main(["log", str(EXAMPLE), "dev.impl", "--messages", "0"]) == 1
+    captured = capsys.readouterr()
+    assert captured.err == "error: --messages must be at least 1\n"
+    assert captured.out == ""
+    assert len(constructed) == 1  # only the fake; real t3 never ran

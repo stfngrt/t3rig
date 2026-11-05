@@ -15,7 +15,7 @@ uv run t3rig up examples/two-seat/rig.yaml         # start a thread per seat; sa
 uv run t3rig ps examples/two-seat/rig.yaml         # status, model, mode and links; --json too
 uv run t3rig send examples/two-seat/rig.yaml dev.impl "Hello"        # add --wait for the reply
 uv run t3rig send examples/two-seat/rig.yaml --pod dev "Hello"       # or --all for every seat
-uv run t3rig log examples/two-seat/rig.yaml dev.impl                 # latest messages; --messages N (default 10)
+uv run t3rig log examples/two-seat/rig.yaml dev.impl                 # latest messages; --messages N (default 10, at least 1)
 ```
 
 Messages carry a `From:`/`To:` header unless you pass `--raw`. Seats are told to name themselves with

@@ -346,6 +346,8 @@ def send(
 
 def log(rig: Rig, t3: T3Cli, seat: str, messages: int) -> str:
     """A seat's latest messages, as `t3 thread show` prints them."""
+    if messages < 1:
+        raise RigError("--messages must be at least 1")
     (chosen,) = select_seats(rig, seat)
     thread = next(s.thread for s in seat_statuses(rig, t3) if s.seat == chosen)
     if thread is None:

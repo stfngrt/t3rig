@@ -346,3 +346,21 @@ def test_log_refuses_unknown_seat_and_seat_without_thread(tmp_path: Path) -> Non
     with pytest.raises(RigError, match="dev.impl has no thread; run `t3rig up`"):
         log(rig, t3, "dev.impl", 10)
     assert t3.shown == []
+
+
+@pytest.mark.parametrize("messages", [0, -1])
+def test_log_refuses_fewer_than_one_message_before_any_t3_call(
+    tmp_path: Path, messages: int
+) -> None:
+    class Untouchable:
+        def __getattr__(self, name: str) -> Any:
+            raise AssertionError(f"shouldn't call t3.{name}")
+
+    rig, t3 = make_rig(tmp_path), FakeT3()
+    up(rig, t3)
+    with pytest.raises(RigError, match="--messages must be at least 1"):
+        log(rig, t3, "dev.impl", messages)
+    assert t3.shown == []
+    # Checked before the seat lookup too: an unknown seat gets this error, and T3 is untouched.
+    with pytest.raises(RigError, match="--messages must be at least 1"):
+        log(rig, Untouchable(), "dev.nobody", messages)  # type: ignore[arg-type]

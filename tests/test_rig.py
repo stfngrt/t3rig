@@ -12,6 +12,7 @@ from t3rig.rig import (
     seat_statuses,
     select_seats,
     send,
+    stop,
     up,
 )
 from t3rig.spec import Edge, Rig, Seat, StartupText
@@ -173,12 +174,12 @@ def test_send_wraps_message_with_sender(tmp_path: Path) -> None:
     assert results[0].error is None
 
 
-def test_send_labels_unknown_sender_and_can_be_raw(tmp_path: Path) -> None:
+def test_send_defaults_to_operator_and_can_be_raw(tmp_path: Path) -> None:
     rig, t3 = make_rig(tmp_path), FakeT3()
     up(rig, t3)
     send(rig, t3, select_seats(rig, "dev.impl"), "hello")
     send(rig, t3, select_seats(rig, "dev.impl"), "hello", raw=True)
-    assert t3.sent[0][1].startswith("From: <unknown sender>\nTo: dev.impl")
+    assert t3.sent[0][1].startswith("From: operator\nTo: dev.impl")
     assert t3.sent[1][1] == "hello"
 
 
@@ -364,3 +365,36 @@ def test_log_refuses_fewer_than_one_message_before_any_t3_call(
     # Checked before the seat lookup too: an unknown seat gets this error, and T3 is untouched.
     with pytest.raises(RigError, match="--messages must be at least 1"):
         log(rig, Untouchable(), "dev.nobody", messages)  # type: ignore[arg-type]
+
+
+def test_stop_interrupts_and_keeps_the_thread(tmp_path: Path) -> None:
+    rig, t3 = make_rig(tmp_path), FakeT3()
+    t3.threads = [{"threadId": "i", "title": "dev-impl@r", "status": "running"}]
+    t3.details["i"] = {"status": "interrupted"}
+    tools = FakeTools(t3, tmp_path)
+    assert stop(rig, t3, "dev.impl", connect_as(tools)) == (
+        "dev.impl: stopped (interrupted); it can be messaged again"
+    )
+    assert tools.tool_names() == ["t3_thread_interrupt"]
+    assert [t["threadId"] for t in t3.threads] == ["i"]
+
+
+def test_stop_needs_no_sign_in_when_nothing_is_running(tmp_path: Path) -> None:
+    def refuse() -> Any:
+        raise AssertionError("shouldn't sign in")
+
+    rig, t3 = make_rig(tmp_path), FakeT3()
+    t3.threads = [{"threadId": "i", "title": "dev-impl@r", "status": "completed"}]
+    assert stop(rig, t3, "dev.impl", refuse) == "dev.impl: nothing to stop (completed)"
+    with pytest.raises(RigError, match="has no thread"):
+        stop(rig, t3, "dev.lead", refuse)
+    with pytest.raises(RigError, match="no seat"):
+        stop(rig, t3, "dev.ghost", refuse)
+
+
+def test_stop_reports_a_seat_that_stays_busy(tmp_path: Path) -> None:
+    rig, t3 = make_rig(tmp_path), FakeT3()
+    t3.threads = [{"threadId": "i", "title": "dev-impl@r", "status": "running"}]
+    t3.details["i"] = {"status": "running"}
+    result = stop(rig, t3, "dev.impl", connect_as(FakeTools(t3, tmp_path)), lambda _: None, 0)
+    assert result == "dev.impl: stop requested, but it's still running"

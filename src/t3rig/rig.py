@@ -2,6 +2,7 @@
 
 import shlex
 import sys
+import time
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -14,7 +15,9 @@ from t3rig.t3 import T3Cli, T3Error
 
 PROVIDERS = {"claude-code": "claudeAgent", "codex": "codex"}
 BUSY_STATUSES = {"preparing", "queued", "starting", "running", "waiting"}
-UNKNOWN_SENDER = "<unknown sender>"
+# Seats are told to pass --from, so a send without it is taken to be from a person. An unknown-sender
+# label made a dispatcher tell a seat to disregard a person's instructions.
+DEFAULT_SENDER = "operator"
 EFFORT_OPTIONS = {"claude-code": "effort", "codex": "reasoningEffort"}
 
 
@@ -87,6 +90,11 @@ def seat_rows(rig: Rig, t3: T3Cli) -> list[dict[str, Any]]:
     return rows
 
 
+def t3rig_command(*arguments: str) -> str:
+    """A shell command for this t3rig, which works for a seat without t3rig on its PATH."""
+    return shlex.join([sys.executable, "-m", "t3rig", *arguments])
+
+
 def envelope(sender: str, recipient: str, body: str) -> str:
     """OpenRig's From/To wrapper, so the recipient can tell who a message is from."""
     return f"From: {sender}\nTo: {recipient}\n---\n{body}"
@@ -104,8 +112,7 @@ def _peer_lines(rig: Rig, seat: Seat) -> list[str]:
 
 def seat_brief(rig: Rig, seat: Seat) -> str:
     """The first message a seat's thread receives."""
-    send_command = [sys.executable, "-m", "t3rig", "send", "--from", seat.qualified_id]
-    send_command.append(str(rig.path))
+    send_command = t3rig_command("send", "--from", seat.qualified_id, str(rig.path))
     others = [s.qualified_id for s in rig.seats if s != seat]
     parts = [
         f"You are seat {seat.qualified_id} in the agent team (rig) {rig.name}.",
@@ -115,7 +122,7 @@ def seat_brief(rig: Rig, seat: Seat) -> str:
         parts.append(f"Team summary: {rig.summary}")
     if others:
         parts.append(f"Other seats: {', '.join(others)}")
-        parts.append(f'To message a seat, run: {shlex.join(send_command)} <seat> "<message>"')
+        parts.append(f'To message a seat, run: {send_command} <seat> "<message>"')
     peers = _peer_lines(rig, seat)
     if peers:
         parts.append("Your relationships:\n" + "\n".join(peers))
@@ -294,6 +301,34 @@ def down(
     return lines, ok
 
 
+def stop(
+    rig: Rig,
+    t3: T3Cli,
+    seat: str,
+    connect: Callable[[], tuple[Tools, str]] = connect_mcp,
+    sleep: Callable[[float], None] = time.sleep,
+    wait_seconds: float = 30,
+) -> str:
+    """Interrupt a seat's current run, keeping its thread so it can be messaged again."""
+    (chosen,) = select_seats(rig, seat)
+    thread = next(s.thread for s in seat_statuses(rig, t3) if s.seat == chosen)
+    if thread is None:
+        raise RigError(f"{chosen.qualified_id} has no thread; run `t3rig up` first")
+    if thread.get("status") not in BUSY_STATUSES:
+        return f"{chosen.qualified_id}: nothing to stop ({thread.get('status')})"
+    thread_id = thread["threadId"]
+    tools, _ = connect()
+    tools.call("t3_thread_interrupt", threadId=thread_id, reason="Stopped with t3rig stop")
+    deadline = time.monotonic() + wait_seconds
+    while True:
+        status = t3.show_thread(thread_id, messages=0).get("thread", {}).get("status")
+        if status not in BUSY_STATUSES:
+            return f"{chosen.qualified_id}: stopped ({status}); it can be messaged again"
+        if time.monotonic() >= deadline:
+            return f"{chosen.qualified_id}: stop requested, but it's still {status}"
+        sleep(2)
+
+
 def select_seats(
     rig: Rig,
     seat: str | None = None,
@@ -330,7 +365,7 @@ def send(
     """Message each seat. One seat failing doesn't stop the others."""
     threads = {s.seat: s.thread for s in seat_statuses(rig, t3)}
     recipients = ", ".join(seat.qualified_id for seat in seats)
-    body = message if raw else envelope(sender or UNKNOWN_SENDER, recipients, message)
+    body = message if raw else envelope(sender or DEFAULT_SENDER, recipients, message)
     results = []
     for seat in seats:
         thread = threads.get(seat)

@@ -6,7 +6,7 @@ import pytest
 from t3rig.rig import RigError
 from t3rig.spec import Edge, Rig, Seat
 from t3rig.t3 import T3Error
-from t3rig.watch import Watcher, dispatchers, excerpt, state_path, watch
+from t3rig.watch import Watcher, dispatchers, excerpt, state_path, waiting_approval, watch
 
 
 class FakeT3:
@@ -58,9 +58,23 @@ def rig(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Rig:
     return Rig(name="r", path=tmp_path / "rig.yaml", seats=seats, edges=edges)
 
 
-def make_watcher(rig: Rig, t3: FakeT3) -> tuple[Watcher, list[str]]:
+def make_watcher(rig: Rig, t3: FakeT3, connect: Any = None) -> tuple[Watcher, list[str]]:
     lines: list[str] = []
-    return Watcher(rig, t3, state_path(rig), lines.append), lines
+    return Watcher(rig, t3, state_path(rig), lines.append, connect), lines
+
+
+class ActivityTools:
+    def __init__(self, pages: list[dict[str, Any]]) -> None:
+        self.pages = pages
+        self.calls: list[dict[str, Any]] = []
+
+    def call(self, tool: str, **arguments: Any) -> Any:
+        self.calls.append(arguments)
+        return self.pages.pop(0)
+
+
+def approval(status: str, text: str) -> dict[str, str]:
+    return {"type": "approval_request", "status": status, "text": text}
 
 
 def started(t3: FakeT3) -> None:
@@ -277,3 +291,43 @@ def test_ordinary_failure_and_limit_talk_in_a_good_run_are_not_usage_limits(rig:
     watcher.tick()
     assert "dev.qa finished a run (completed)" in t3.sent[1][1]
     assert not any(line.startswith("ALERT") for line in lines)
+
+
+def test_needs_input_ping_names_the_command_and_how_to_stop(rig: Rig) -> None:
+    t3 = FakeT3()
+    started(t3)
+    tools = ActivityTools(
+        [{"items": [approval("completed", "old"), approval("waiting", "pytest\n-q")]}]
+    )
+    watcher, _ = make_watcher(rig, t3, lambda: (tools, "auto"))
+    watcher.tick()
+    t3.set(IMPL, 2, status="running", pending=1)
+    watcher.tick()
+    assert 'Waiting on: "pytest -q"' in t3.sent[0][1]
+    assert "You can't approve this" in t3.sent[0][1]
+    assert "-m t3rig stop" in t3.sent[0][1] and "dev.impl" in t3.sent[0][1]
+
+
+def test_needs_input_still_pings_without_the_command(rig: Rig) -> None:
+    def not_signed_in() -> Any:
+        raise T3Error("not signed in")
+
+    t3 = FakeT3()
+    started(t3)
+    watcher, _ = make_watcher(rig, t3, not_signed_in)
+    watcher.tick()
+    t3.set(IMPL, 2, status="running", pending=1)
+    watcher.tick()
+    assert "dev.impl needs input" in t3.sent[0][1] and "Waiting on" not in t3.sent[0][1]
+
+
+def test_waiting_approval_reads_recent_pages_and_ignores_answered_ones() -> None:
+    tools = ActivityTools(
+        [
+            {"items": [approval("waiting", "first")], "hasMore": True, "nextPosition": 300},
+            {"items": [approval("completed", "done")], "hasMore": False},
+        ]
+    )
+    assert waiting_approval(tools, "t", 250) == "first"
+    assert tools.calls[0]["afterPosition"] == 150 and tools.calls[1]["afterPosition"] == 300
+    assert waiting_approval(ActivityTools([{"items": []}]), "t", 3) is None

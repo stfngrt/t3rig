@@ -20,13 +20,23 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from t3rig.rig import BUSY_STATUSES, RigError, SeatStatus, envelope, seat_statuses
+from t3rig.rig import (
+    BUSY_STATUSES,
+    RigError,
+    SeatStatus,
+    Tools,
+    connect_mcp,
+    envelope,
+    seat_statuses,
+    t3rig_command,
+)
 from t3rig.spec import Rig
 from t3rig.t3 import T3Cli, T3Error
 
 EXCERPT_CHARS = 120
 ALERT_AFTER_FAILURES = 3
 SENDER = "t3rig watch"
+ACTIVITY_WINDOW = 100
 # T3 has no field for this, so it's read from the failed run's last reply.
 USAGE_LIMIT = re.compile(r"\b(usage|rate|session|weekly|\d+-hour) limit\b|hit your .*limit", re.I)
 CLOSING = (
@@ -96,8 +106,33 @@ def _thread_line(prefix: str, thread: dict[str, Any]) -> str:
     return f"- {prefix} Thread {thread['threadId']}: {thread.get('link', '')}".rstrip()
 
 
+def waiting_approval(tools: Tools, thread_id: str, item_count: int) -> str | None:
+    """The newest approval a thread is waiting on, read from its activity, oldest item first."""
+    after = max(item_count - ACTIVITY_WINDOW, 0)
+    found = None
+    while True:
+        page = tools.call(
+            "t3_thread_read",
+            threadId=thread_id,
+            view="activity",
+            afterPosition=after,
+            limit=ACTIVITY_WINDOW,
+        )
+        for item in page.get("items", []):
+            if item.get("type") == "approval_request" and item.get("status") == "waiting":
+                found = item.get("text")
+        if not page.get("hasMore") or page.get("nextPosition", after) <= after:
+            return found
+        after = page["nextPosition"]
+
+
 def _check_seat(
-    status: SeatStatus, entry: dict[str, Any] | None, dispatcher: str | None, t3: T3Cli
+    rig: Rig,
+    status: SeatStatus,
+    entry: dict[str, Any] | None,
+    dispatcher: str | None,
+    t3: T3Cli,
+    waiting_on: Callable[[str, int], str | None],
 ) -> tuple[list[Event], dict[str, Any]]:
     """What happened on a seat since it was last checked, and the updates needing no ping."""
     thread = status.thread
@@ -123,7 +158,14 @@ def _check_seat(
     if pending:
         key = f"{run}:{pending}"
         if known["asked"] != key:
-            line = _thread_line(f"{seat} needs input ({pending} pending request).", thread)
+            waiting = waiting_on(thread["threadId"], details.get("itemCount", 0))
+            said = f' Waiting on: "{excerpt(waiting)}"' if waiting else ""
+            stop_command = t3rig_command("stop", str(rig.path), seat)
+            line = _thread_line(
+                f"{seat} needs input ({pending} pending request).{said} You can't approve this. "
+                f"If it can't wait for a person, run `{stop_command}` and message the seat.",
+                thread,
+            )
             events.append(
                 Event(
                     seat,
@@ -169,11 +211,29 @@ def _check_seat(
 
 
 class Watcher:
-    def __init__(self, rig: Rig, t3: T3Cli, path: Path, out: Callable[[str], None] = print) -> None:
+    def __init__(
+        self,
+        rig: Rig,
+        t3: T3Cli,
+        path: Path,
+        out: Callable[[str], None] = print,
+        connect: Callable[[], tuple[Tools, str]] | None = None,
+    ) -> None:
         self.rig, self.t3, self.path, self.out = rig, t3, path, out
+        self.connect = connect
         self.dispatchers = dispatchers(rig)
         self.state = load_state(path)
         self.failures: dict[str, int] = {}
+
+    def _waiting_on(self, thread_id: str, item_count: int) -> str | None:
+        """What a seat is waiting on. A ping without it is still useful, so errors are dropped."""
+        if self.connect is None:
+            return None
+        try:
+            tools, _ = self.connect()
+            return waiting_approval(tools, thread_id, item_count)
+        except T3Error:
+            return None
 
     def _apply(self, session_name: str, updates: dict[str, Any]) -> None:
         if updates:
@@ -205,7 +265,9 @@ class Watcher:
         for status in statuses:
             dispatcher = self.dispatchers.get(status.seat.qualified_id)
             entry = self.state["seats"].get(status.session_name)
-            events, updates = _check_seat(status, entry, dispatcher, self.t3)
+            events, updates = _check_seat(
+                self.rig, status, entry, dispatcher, self.t3, self._waiting_on
+            )
             self._apply(status.session_name, updates)
             for event in events:
                 # A dispatcher can't fix these, so a person has to hear about them too.
@@ -245,7 +307,7 @@ def watch(
         raise RigError(f"rig {rig.name} has no delegates_to edges, so there's nobody to ping")
     path = state_path(rig)
     with _single_watcher(path):
-        watcher = Watcher(rig, t3, path, out)
+        watcher = Watcher(rig, t3, path, out, connect_mcp)
         while True:
             try:
                 watcher.tick()

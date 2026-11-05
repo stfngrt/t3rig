@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 
 from t3rig import __version__
 from t3rig.mcp import ACCESS_LEVELS, login
-from t3rig.rig import RigError, down, log, seat_rows, select_seats, send, up
+from t3rig.rig import RigError, down, log, seat_rows, select_seats, send, stop, up
 from t3rig.spec import Rig, SpecError, load_rig
 from t3rig.t3 import T3Cli, T3Error
 from t3rig.watch import dispatchers, last_check, watch
@@ -37,6 +37,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     down_parser.add_argument("rig", help="path to rig.yaml")
     down_parser.add_argument("--seat", help="only this seat, as pod.member")
+
+    stop_parser = commands.add_parser(
+        "stop", help="Interrupt a seat's current run, keeping its thread so it can be messaged."
+    )
+    stop_parser.add_argument("rig", help="path to rig.yaml")
+    stop_parser.add_argument("seat", help="seat as pod.member")
 
     ps_parser = commands.add_parser("ps", help="Show each seat's T3 thread and status.")
     ps_parser.add_argument("rig", help="path to rig.yaml")
@@ -186,6 +192,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             _up(rig, t3)
         elif args.command == "down":
             return _down(rig, t3, args.seat)
+        elif args.command == "stop":
+            print(stop(rig, t3, args.seat))
         elif args.command == "ps":
             _ps(rig, t3, args.json)
         elif args.command == "send":

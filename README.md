@@ -19,7 +19,8 @@ uv run t3rig log examples/two-seat/rig.yaml dev.impl                 # latest me
 ```
 
 Messages carry a `From:`/`To:` header unless you pass `--raw`. Seats are told to name themselves with
-`--from`. It's self-declared, so treat it as a label rather than proof of who sent the message.
+`--from`, and a send without it says `From: operator`. It's self-declared, so treat it as a label
+rather than proof of who sent the message.
 
 ### Permissions and stopping
 
@@ -30,6 +31,7 @@ access.
 ```sh
 uv run t3rig login --access auto                    # seats can't launch above this level
 uv run t3rig up examples/restricted/rig.yaml        # lead at auto, review at approval-required
+uv run t3rig stop examples/restricted/rig.yaml dev.review   # interrupt a run; the thread stays
 uv run t3rig down examples/restricted/rig.yaml      # interrupt and archive; add --seat pod.member
 ```
 
@@ -72,8 +74,10 @@ uv run t3rig watch examples/two-seat/rig.yaml
   repeats old pings nor misses new ones. A crash can repeat a ping, but not lose one.
 - It only works while running. It's a foreground command, not a daemon.
 - It polls, every 15 seconds by default (`--interval`), so a ping can lag by that much.
-- A dispatcher can see that a seat is waiting but can't answer for it. A person answers in T3.
-  T3's tools let an agent answer questions, but not approve permission requests.
+- A dispatcher can't approve for a seat, and T3's tools don't let an agent do so. A person answers in
+  T3. When signed in, the ping says what command the seat is waiting on and how to `t3rig stop` it, so
+  the dispatcher can stop that run and send other instructions instead. Stopping doesn't approve
+  anything, and the seat can't run the command.
 
 A seat's thread is the one titled `pod-member@rig` (OpenRig's seat name), so renaming a thread
 disconnects it from its seat.

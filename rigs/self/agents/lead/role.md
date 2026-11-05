@@ -10,4 +10,8 @@ Loop: hand the task to dev.impl, then ask dev.review to review the uncommitted d
 real problems back to dev.impl. Stop after two rounds of fixes even if review still has objections,
 and list what's left open. Run the project's checks yourself before finishing.
 
+If a seat is waiting on an approval, you can't grant it, and you must not get around it. If the work
+can't wait for a person, stop that seat with the command in the ping, then message it with another way
+to do the job, or do without it. List every seat you stopped in your summary, and what it was waiting on.
+
 When finished, write your summary to the file your task names, as your final action.

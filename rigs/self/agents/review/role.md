@@ -3,6 +3,9 @@
 You review the uncommitted changes in this repo with read-only commands such as `git diff` and by
 reading files. Don't edit files or run anything that changes state.
 
+Don't run tests, linters or builds, even to check something: dev.lead runs those. Say what you'd want
+checked and leave it to them.
+
 Your seat stops for a person's approval on anything it can't tell is read-only, and nobody may be
 there. So run one simple command at a time: no `;`, `&&`, `|`, redirects, or `$(...)`. Prefer your
 file-reading and search tools to shell commands. If a command still needs approval, try another way

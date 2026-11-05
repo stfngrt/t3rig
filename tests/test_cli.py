@@ -22,9 +22,9 @@ def test_validate_example(capsys: pytest.CaptureFixture[str]) -> None:
 
 def test_validate_reports_errors(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     rig = tmp_path / "rig.yaml"
-    rig.write_text('version: "0.1"\nname: x\npods: []\n')
+    rig.write_text('version: "1"\nname: "bad name"\npods: []\n')
     assert main(["validate", str(rig)]) == 1
-    assert "rig.version" in capsys.readouterr().err
+    assert "rig.name" in capsys.readouterr().err
 
 
 def test_send_needs_seat_and_message(capsys: pytest.CaptureFixture[str]) -> None:

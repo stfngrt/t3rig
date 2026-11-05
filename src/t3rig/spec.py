@@ -585,8 +585,9 @@ def load_rig(path: str | Path) -> Rig:
     rig_root = rig_path.parent
 
     _check_keys(data, RIG_KEYS, OPENRIG_ONLY_RIG_KEYS, "rig", errors)
-    if data.get("version") != "0.2":
-        errors.append(f'rig.version: must be "0.2" (got {data.get("version")!r})')
+    version = data.get("version")
+    if not isinstance(version, str) or not version:
+        errors.append(f"rig.version: must be a non-empty string (got {version!r})")
     name = data.get("name")
     if not isinstance(name, str) or not RIG_NAME_PATTERN.match(name):
         errors.append(f"rig.name: must be letters, digits, '.', '-' or '_' (got {name!r})")

@@ -301,6 +301,23 @@ def test_agent_needs_name_and_version(tmp_path: Path) -> None:
     assert "agent.name" in errors and "agent.version" in errors
 
 
+@pytest.mark.parametrize("version", ['"1"', '"0.1"', '"0.2"', "v-next", "'  '"])
+def test_accepts_any_non_empty_rig_version(tmp_path: Path, version: str) -> None:
+    path = write_rig(tmp_path, pods(MEMBER % ("a", "claude-code")))
+    path.write_text(path.read_text().replace('version: "0.2"', f"version: {version}", 1))
+    assert load_rig(path).name == "r"
+
+
+@pytest.mark.parametrize(
+    "version_line",
+    ["", "version: ''\n", "version: 0.2\n", "version: 1\n", "version: [a]\n"],
+)
+def test_refuses_missing_empty_or_non_string_rig_version(tmp_path: Path, version_line: str) -> None:
+    path = write_rig(tmp_path, pods(MEMBER % ("a", "claude-code")))
+    path.write_text(path.read_text().replace('version: "0.2"\n', version_line, 1))
+    assert "rig.version: must be a non-empty string" in errors_for(path)
+
+
 def test_refuses_edge_to_missing_seat(tmp_path: Path) -> None:
     extra = ", edges: [{kind: delegates_to, from: a, to: ghost}]"
     errors = errors_for(write_rig(tmp_path, pods(MEMBER % ("a", "claude-code"), extra=extra)))

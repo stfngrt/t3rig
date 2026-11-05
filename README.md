@@ -84,8 +84,8 @@ disconnects it from its seat.
 
 ## What's supported
 
-- Rig specs at version `0.2`: pods, members, edges, `culture_file` and `startup.files` at the rig,
-  pod and member levels.
+- Rig specs with any non-empty string `version`: pods, members, edges, `culture_file` and
+  `startup.files` at the rig, pod and member levels.
 - Agent specs: `startup.files`, `uses.guidance`, `imports`, and `model` from `defaults` or a
   profile's `preferences`. The model used is the member's, then the profile's, then the agent's.
   As in OpenRig, imports only add resources for `uses` to select, and can't import further specs.

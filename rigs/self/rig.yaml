@@ -21,7 +21,6 @@ pods:
         agent_ref: "local:agents/review"
         profile: default
         runtime: claude-code
-        permission_policy: builtin:locked
         cwd: ../..
     edges:
       - kind: delegates_to

@@ -2,6 +2,7 @@ name: review
 version: "1.0.0"
 defaults:
   model: claude-sonnet-5-5
+  effort: medium
 startup:
   files:
     - path: role.md

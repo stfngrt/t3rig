@@ -6,3 +6,6 @@ finish. End with a short account of what changed. `t3rig watch` tells dev.lead w
 you don't need to message anyone.
 
 Don't commit, push, create branches, or start or stop threads.
+
+Follow the `ponytail` skill (`.claude/skills/ponytail/SKILL.md`) at its default level, full, for
+every change.

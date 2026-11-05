@@ -7,5 +7,12 @@ startup:
   files:
     - path: role.md
       delivery_hint: send_text
+resources:
+  skills:
+    # From github.com/DietrichGebert/ponytail (MIT), skills/ponytail at 96608e0.
+    - id: ponytail
+      path: skills/ponytail
 profiles:
-  default: {}
+  default:
+    uses:
+      skills: [ponytail]

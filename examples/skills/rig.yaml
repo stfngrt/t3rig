@@ -1,0 +1,12 @@
+version: "0.2"
+name: skills
+summary: One seat with a project skill, for trying t3rig's skill install.
+pods:
+  - id: dev
+    label: Development
+    members:
+      - id: worker
+        agent_ref: "local:agents/worker"
+        profile: default
+        runtime: claude-code
+        cwd: .

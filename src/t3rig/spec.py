@@ -3,7 +3,9 @@
 Anything outside the subset is refused, so a rig never runs with part of its spec ignored.
 """
 
+import os
 import re
+import stat
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -93,11 +95,20 @@ LIFECYCLE_DEFAULTS = {
     "compaction_strategy": "default-compaction",
     "restore_policy": "resume_if_possible",
 }
-USES_KEYS = {"guidance"}
-OPENRIG_ONLY_USES_KEYS = {"skills", "subagents", "plugins", "runtime_resources"}
+USES_KEYS = {"guidance", "skills"}
+OPENRIG_ONLY_USES_KEYS = {"subagents", "plugins", "runtime_resources"}
+RESOURCE_KEYS = {"guidance", "skills"}
+OPENRIG_ONLY_RESOURCE_KEYS = {"plugins", "runtime_resources", "subagents", "hooks"}
+SKILL_KEYS = {"id", "path"}
+# Where each runtime looks for project skills, relative to the seat's folder.
+SKILL_ROOTS = {"claude-code": ".claude/skills", "codex": ".agents/skills"}
 STARTUP_KEYS = {"files", "actions"}
 STARTUP_FILE_KEYS = {"path", "orientation", "delivery_hint", "required", "applies_on"}
 TEXT_DELIVERY_HINTS = {"auto", "guidance_merge", "send_text"}
+DELIVERY_HINTS = TEXT_DELIVERY_HINTS | {"skill_install"}
+# As OpenRig does: the role guidance file stays text; the frontmatter pattern splits a SKILL.md.
+ROLE_GUIDANCE = re.compile(r"(^|[\\/])guidance[\\/]role\.md$")
+FRONTMATTER = re.compile(r"^---\s*\n([\s\S]*?)\n---\s*\n?([\s\S]*)$")
 
 ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 RIG_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+$")
@@ -120,6 +131,18 @@ class StartupText:
 
 
 @dataclass(frozen=True)
+class SkillFile:
+    """A file to copy into a seat's skills folder, as <skills root>/<folder>/<name>."""
+
+    folder: str
+    name: str
+    source: Path
+
+
+StartupItem = StartupText | SkillFile
+
+
+@dataclass(frozen=True)
 class Seat:
     pod: str
     id: str
@@ -132,6 +155,7 @@ class Seat:
     effort: str | None = None
     runtime_mode: str | None = None
     startup: tuple[StartupText, ...] = ()
+    skills: tuple[SkillFile, ...] = ()
 
     @property
     def qualified_id(self) -> str:
@@ -218,8 +242,26 @@ def _read_text(path: Path, where: str, errors: list[str]) -> str | None:
         return None
 
 
-def _parse_startup(raw: Any, base: Path, where: str, errors: list[str]) -> list[StartupText]:
-    """A startup block's files, as text. OpenRig places some in the harness; here all are text."""
+def _resolve_hint(hint: str, orientation: Any, path: str, text: str) -> str:
+    """The delivery for a startup file, resolved per file as OpenRig does for `auto`."""
+    if hint != "auto":
+        return hint
+    if orientation == "role" or ROLE_GUIDANCE.search(path):
+        return "send_text"
+    if path.endswith("SKILL.md") or text.startswith("# SKILL"):
+        return "skill_install"
+    return "guidance_merge" if path.endswith(".md") else "send_text"
+
+
+def _check_folder_name(name: str, where: str, errors: list[str]) -> bool:
+    if name in ("", ".", "..") or "/" in name or "\\" in name:
+        errors.append(f"{where}: {name!r} can't be a skill folder name")
+        return False
+    return True
+
+
+def _parse_startup(raw: Any, base: Path, where: str, errors: list[str]) -> list[StartupItem]:
+    """A startup block's files. Text goes in the first message; a skill_install file is copied."""
     if raw is None:
         return []
     if not isinstance(raw, dict):
@@ -232,7 +274,7 @@ def _parse_startup(raw: Any, base: Path, where: str, errors: list[str]) -> list[
     if not isinstance(files, list):
         errors.append(f"{where}.files: must be a list")
         return []
-    texts = []
+    items: list[StartupItem] = []
     for index, entry in enumerate(files):
         file_where = f"{where}.files[{index}]"
         if not isinstance(entry, dict):
@@ -244,8 +286,8 @@ def _parse_startup(raw: Any, base: Path, where: str, errors: list[str]) -> list[
             errors.append(f"{file_where}.path: must be a relative path inside its folder")
             continue
         hint = entry.get("delivery_hint", "auto")
-        if hint not in TEXT_DELIVERY_HINTS or (hint == "auto" and path.endswith("SKILL.md")):
-            errors.append(f"{file_where}: installing skills isn't supported by t3rig yet")
+        if hint not in DELIVERY_HINTS:
+            errors.append(f"{file_where}.delivery_hint: must be one of {sorted(DELIVERY_HINTS)}")
             continue
         applies_on = entry.get("applies_on", ["fresh_start"])
         if not isinstance(applies_on, list) or "fresh_start" not in applies_on:
@@ -254,9 +296,14 @@ def _parse_startup(raw: Any, base: Path, where: str, errors: list[str]) -> list[
         if not target.exists() and entry.get("required", True) is False:
             continue
         text = _read_text(target, file_where, errors)
-        if text is not None:
-            texts.append(StartupText(path, text))
-    return texts
+        if text is None:
+            continue
+        if _resolve_hint(hint, entry.get("orientation"), path, text) != "skill_install":
+            items.append(StartupText(path, text))
+        elif _check_folder_name(target.parent.name, f"{file_where}.path", errors):
+            # The folder is the file's parent folder, so the rig folder names a top-level SKILL.md.
+            items.append(SkillFile(target.parent.name, target.name, target))
+    return items
 
 
 def _check_lifecycle(raw: Any, where: str, errors: list[str]) -> None:
@@ -306,6 +353,7 @@ class _Import:
     name: str
     directory: Path
     spec: dict[str, Any]
+    skills: dict[str, str]
 
 
 def _load_imports(
@@ -349,7 +397,8 @@ def _load_imports(
             errors.append(f"{item_where}: imported spec {name} can't have imports of its own")
         if any(existing.name == name for existing in imports):
             errors.append(f"{item_where}: two imports are named {name!r}")
-        imports.append(_Import(name, target, spec))
+        skills = _parse_resources(spec.get("resources"), f"{item_where} ({name}).resources", errors)
+        imports.append(_Import(name, target, spec, skills))
     return imports
 
 
@@ -425,17 +474,207 @@ def _selected_guidance(
     return texts
 
 
+def _is_safe_skill_path(path: str) -> bool:
+    """As OpenRig does: relative, with no `..` segment once `\\` is read as `/`."""
+    unified = path.replace("\\", "/")
+    drive = re.match(r"^[A-Za-z]:/", unified)
+    parts = unified.split("/")
+    return bool(unified) and not unified.startswith("/") and not drive and ".." not in parts
+
+
+def _parse_skill_pool(raw: Any, where: str, errors: list[str]) -> dict[str, str]:
+    """An agent's resources.skills, as id -> path. Every entry is checked, selected or not."""
+    if not isinstance(raw, list):
+        errors.append(f"{where}: must be a list")
+        return {}
+    pool: dict[str, str] = {}
+    seen: set[Any] = set()
+    for index, entry in enumerate(raw):
+        entry_where = f"{where}[{index}]"
+        if not isinstance(entry, dict):
+            errors.append(f"{entry_where}: must be a mapping")
+            continue
+        _check_keys(entry, SKILL_KEYS, set(), entry_where, errors)
+        skill_id, path = entry.get("id"), entry.get("path")
+        valid_id = isinstance(skill_id, str) and bool(skill_id)
+        if not valid_id:
+            errors.append(f"{entry_where}.id: required non-empty string")
+        elif ":" in skill_id:
+            errors.append(f"{entry_where}.id: can't contain ':' (a ref with ':' reads as name:id)")
+            valid_id = False
+        elif _check_folder_name(skill_id, f"{entry_where}.id", errors):
+            if skill_id in seen:
+                errors.append(f"{entry_where}.id: duplicate id {skill_id!r}")
+            seen.add(skill_id)
+        valid_path = isinstance(path, str) and _is_safe_skill_path(path)
+        if not valid_path:
+            errors.append(f"{entry_where}.path: must be a relative path with no '..' segment")
+        elif valid_id:
+            pool.setdefault(skill_id, path)
+    return pool
+
+
+def _parse_resources(raw: Any, where: str, errors: list[str]) -> dict[str, str]:
+    """Check an agent's resources and return its skills. Guidance is checked when selected."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        errors.append(f"{where}: must be a mapping")
+        return {}
+    _check_keys(raw, RESOURCE_KEYS, OPENRIG_ONLY_RESOURCE_KEYS, where, errors)
+    if raw.get("skills") is None:
+        return {}
+    return _parse_skill_pool(raw["skills"], f"{where}.skills", errors)
+
+
+def _skill_problem(text: str) -> str | None:
+    """Why text isn't a usable SKILL.md. This is stricter than OpenRig, which checks less."""
+    match = FRONTMATTER.match(text)
+    if match is None:
+        return "needs frontmatter between '---' lines"
+    try:
+        meta = yaml.safe_load(match.group(1))
+    except yaml.YAMLError as error:
+        return f"has frontmatter that isn't valid YAML: {error}"
+    if not isinstance(meta, dict):
+        return "needs frontmatter that is a YAML mapping"
+    for key in ("name", "description"):
+        if not isinstance(meta.get(key), str) or not meta[key].strip():
+            return f"needs a non-blank string {key!r} in its frontmatter"
+    return None if match.group(2).strip() else "has nothing after its frontmatter"
+
+
+def _skill_tree(source: Path, where: str, errors: list[str]) -> list[str] | None:
+    """Files under a skill folder, as posix paths. Only regular files and folders are allowed."""
+    names = []
+    for current, folders, files in os.walk(source):
+        for entry in (*folders, *files):
+            path = Path(current) / entry
+            if path.is_symlink():
+                errors.append(f"{where}: {path} is a symlink")
+                return None
+            if entry in files and not stat.S_ISREG(path.lstat().st_mode):
+                errors.append(f"{where}: {path} isn't a regular file")
+                return None
+        names += [(Path(current) / name).relative_to(source).as_posix() for name in files]
+    return sorted(names)
+
+
+def _skill_files(
+    folder: str, base: Path, path: str, where: str, errors: list[str]
+) -> list[SkillFile]:
+    """The files of one skill: a folder copied whole, or one file copied under its own name."""
+    base = base.resolve()
+    source = base / path.replace("\\", "/")
+    if source.is_symlink() or not source.resolve().is_relative_to(base):
+        errors.append(f"{where}: {path!r} must be a real path inside {base}")
+        return []
+    if source.is_dir():
+        names = _skill_tree(source, where, errors)
+        if names is None:
+            return []
+        if "SKILL.md" not in names:
+            errors.append(f"{where}: {path!r} has no SKILL.md")
+            return []
+        skill_md = source / "SKILL.md"
+    elif source.is_file():
+        names, skill_md = [source.name], source
+    else:
+        errors.append(f"{where}: can't read {source}")
+        return []
+    text = _read_text(skill_md, where, errors)
+    problem = _skill_problem(text) if text is not None else None
+    if problem:
+        errors.append(f"{where}: {skill_md} {problem}")
+    if text is None or problem:
+        return []
+    return [SkillFile(folder, name, source / name if source.is_dir() else source) for name in names]
+
+
+def _find_skill(
+    ref: Any,
+    own: dict[str, str],
+    directory: Path,
+    imports: list[_Import],
+    where: str,
+    errors: list[str],
+) -> tuple[Path, str] | None:
+    """Where a skill is declared. `name:id` names an import; a bare id tries the agent first."""
+    if not isinstance(ref, str):
+        errors.append(f"{where}: skill ids must be strings (got {ref!r})")
+        return None
+    namespace, colon, rest = ref.partition(":")
+    bare = rest if colon else ref
+    if not ref or (colon and not (namespace and bare)):
+        errors.append(f"{where}: {ref!r} isn't a valid skill id; use id or name:id")
+        return None
+    if not colon and bare in own:
+        return directory, own[bare]
+    if colon:
+        found = [i for i in imports if i.name == namespace and bare in i.skills]
+    else:
+        found = [i for i in imports if bare in i.skills]
+    if len(found) > 1:
+        errors.append(
+            f"{where}: {ref!r} is ambiguous ({', '.join(i.name for i in found)}); use name:id"
+        )
+        return None
+    if not found:
+        errors.append(
+            f"{where}: {ref!r} not found in resource pool; t3rig doesn't discover skills from "
+            "the working folder, home or the OpenRig catalog, so declare it in resources.skills"
+        )
+        return None
+    return found[0].directory, found[0].skills[bare]
+
+
+def _selected_skills(
+    selected: Any,
+    own: dict[str, str],
+    directory: Path,
+    imports: list[_Import],
+    where: str,
+    errors: list[str],
+) -> list[SkillFile]:
+    if selected is None:
+        return []
+    if not isinstance(selected, list):
+        errors.append(f"{where}: must be a list")
+        return []
+    files: list[SkillFile] = []
+    done: list[Any] = []
+    for ref in selected:
+        if ref in done:
+            continue
+        done.append(ref)
+        found = _find_skill(ref, own, directory, imports, where, errors)
+        # The folder is named as the ref is written, so an import's skill is `name:id`.
+        if found is not None and _check_folder_name(ref, where, errors):
+            files += _skill_files(ref, *found, where, errors)
+    return files
+
+
+@dataclass(frozen=True)
+class _Agent:
+    """What an agent spec contributes to a seat."""
+
+    model: str | None = None
+    effort: str | None = None
+    startup: tuple[StartupItem, ...] = ()
+    skills: tuple[SkillFile, ...] = ()
+
+
 def _load_agent(
     agent_ref: str, profile: str, rig_root: Path, where: str, errors: list[str]
-) -> tuple[str | None, str | None, list[StartupText]]:
-    """Return the model and effort an agent spec prefers, and its instructions in order."""
+) -> _Agent:
+    """The model and effort an agent spec prefers, and its instructions and skills in order."""
     directory = _agent_dir(agent_ref, rig_root)
     if directory is None:
         errors.append(f"{where}.agent_ref: must be local:<relative path> or path:<absolute path>")
-        return None, None, []
+        return _Agent()
     agent = _read_yaml_mapping(directory / "agent.yaml", f"{where}.agent_ref", errors)
     if agent is None:
-        return None, None, []
+        return _Agent()
     _check_keys(agent, AGENT_KEYS, set(), f"{where} agent", errors)
     for key in ("name", "version"):
         if not isinstance(agent.get(key), str):
@@ -444,7 +683,7 @@ def _load_agent(
     selected = profiles.get(profile) if isinstance(profiles, dict) else None
     if not isinstance(selected, dict):
         errors.append(f"{where}.profile: agent has no profile {profile!r}")
-        return None, None, []
+        return _Agent()
     profile_where = f"{where} profile"
     _check_keys(selected, PROFILE_KEYS, set(), profile_where, errors)
     _check_lifecycle(selected.get("lifecycle"), f"{profile_where}.lifecycle", errors)
@@ -460,20 +699,29 @@ def _load_agent(
     preferred_model, preferred_effort = _parse_preferences(
         selected.get("preferences"), f"{profile_where}.preferences", errors
     )
+    own_skills = _parse_resources(agent.get("resources"), f"{where} agent.resources", errors)
     imports = _load_imports(agent, directory, f"{where} agent.imports", errors)
-    texts = [
+    skills = _selected_skills(
+        uses.get("skills"), own_skills, directory, imports, f"{profile_where}.uses.skills", errors
+    )
+    startup = [
         *_selected_guidance(agent, uses, directory, imports, f"{profile_where}.uses", errors),
         *_parse_startup(agent.get("startup"), directory, f"{where} agent.startup", errors),
         *_parse_startup(selected.get("startup"), directory, f"{profile_where}.startup", errors),
     ]
-    return preferred_model or default_model, preferred_effort or default_effort, texts
+    return _Agent(
+        preferred_model or default_model,
+        preferred_effort or default_effort,
+        tuple(startup),
+        tuple(skills),
+    )
 
 
 def _parse_seat(
     member: Any,
     pod_id: str,
     rig_root: Path,
-    shared_startup: list[StartupText],
+    shared_startup: list[StartupItem],
     rig_mode: str | None,
     where: str,
     errors: list[str],
@@ -497,10 +745,10 @@ def _parse_seat(
         valid = False
     if not valid:
         return None
-    agent_model, agent_effort, agent_startup = _load_agent(
-        member["agent_ref"], member["profile"], rig_root, where, errors
-    )
+    agent = _load_agent(member["agent_ref"], member["profile"], rig_root, where, errors)
     member_startup = _parse_startup(member.get("startup"), rig_root, f"{where}.startup", errors)
+    # OpenRig's layer order: agent, profile, culture, rig, pod, member.
+    startup = [*agent.startup, *shared_startup, *member_startup]
     cwd = (rig_root / Path(member["cwd"]).expanduser()).resolve()
     if not cwd.is_dir():
         errors.append(f"{where}.cwd: {cwd} isn't a directory")
@@ -512,14 +760,14 @@ def _parse_seat(
         agent_ref=member["agent_ref"],
         profile=member["profile"],
         label=member.get("label"),
-        model=member.get("model") or agent_model,
-        effort=member.get("effort") or agent_effort,
+        model=member.get("model") or agent.model,
+        effort=member.get("effort") or agent.effort,
         runtime_mode=_parse_policy(
             member.get("permission_policy"), f"{where}.permission_policy", errors
         )
         or rig_mode,
-        # OpenRig's layer order: agent, profile, culture, rig, pod, member.
-        startup=(*agent_startup, *shared_startup, *member_startup),
+        startup=tuple(item for item in startup if isinstance(item, StartupText)),
+        skills=(*agent.skills, *(item for item in startup if isinstance(item, SkillFile))),
     )
 
 
@@ -593,7 +841,7 @@ def load_rig(path: str | Path) -> Rig:
         errors.append(f"rig.name: must be letters, digits, '.', '-' or '_' (got {name!r})")
 
     rig_mode = _parse_policy(data.get("permission_policy"), "rig.permission_policy", errors)
-    rig_startup: list[StartupText] = []
+    rig_startup: list[StartupItem] = []
     culture_file = data.get("culture_file")
     if culture_file is not None:
         if not isinstance(culture_file, str) or not _is_safe_relative(culture_file):

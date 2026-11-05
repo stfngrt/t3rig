@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from t3rig import __version__
 from t3rig.mcp import ACCESS_LEVELS, login
 from t3rig.rig import RigError, down, log, seat_rows, select_seats, send, stop, up
+from t3rig.skills import apply_skills, plan_skills
 from t3rig.spec import Rig, SpecError, load_rig
 from t3rig.t3 import T3Cli, T3Error
 from t3rig.watch import dispatchers, last_check, watch
@@ -19,11 +20,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
 
-    for name, description in (
-        ("validate", "Check that t3rig can run a rig spec."),
-        ("up", "Start a T3 thread for each seat that doesn't have one."),
-    ):
-        commands.add_parser(name, help=description).add_argument("rig", help="path to rig.yaml")
+    validate_parser = commands.add_parser("validate", help="Check that t3rig can run a rig spec.")
+    validate_parser.add_argument("rig", help="path to rig.yaml")
+
+    up_parser = commands.add_parser(
+        "up", help="Install the rig's skills and start a T3 thread for each seat without one."
+    )
+    up_parser.add_argument("rig", help="path to rig.yaml")
+    up_parser.add_argument(
+        "--yes", action="store_true", help="apply the skill changes shown, then start the seats"
+    )
 
     login_parser = commands.add_parser(
         "login",
@@ -86,9 +92,28 @@ def _validate(rig: Rig) -> None:
     print(f"{rig.name}: OK ({len(rig.seats)} seats, {len(rig.edges)} edges)")
 
 
-def _up(rig: Rig, t3: T3Cli) -> None:
+def _up(rig: Rig, t3: T3Cli, yes: bool) -> int:
+    plan = plan_skills(rig)  # Before anything starts, so a refusal leaves nothing half done.
+    for problem in plan.errors:
+        print(f"error: {problem}", file=sys.stderr)
+    if plan.errors:
+        return 1
+    if plan.has_changes:
+        for line in plan.lines():
+            print(line)
+        if not yes:
+            print(
+                "No changes made. Re-run with --yes to apply the skill changes and start the seats."
+            )
+            return 1
+        apply_skills(plan)
+    else:
+        for line in plan.note_lines():
+            print(line)
+        apply_skills(plan)  # Only re-records files that already match; the project isn't touched.
     for line in up(rig, t3):
         print(line)
+    return 0
 
 
 def _ago(timestamp: str | None) -> str:
@@ -189,7 +214,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "validate":
             _validate(rig)
         elif args.command == "up":
-            _up(rig, t3)
+            return _up(rig, t3, args.yes)
         elif args.command == "down":
             return _down(rig, t3, args.seat)
         elif args.command == "stop":

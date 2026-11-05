@@ -5,7 +5,7 @@ Claims cite their source, or are marked *repo* (t3rig's own code or history) or 
 
 ## Summary
 
-- A seat's context is its only memory. Everything t3rig gives a seat today is in one first message,
+- A seat's context is its only memory. Everything t3rig gives a seat today is in one first message (its {term}`brief`),
   and Claude Code's own docs say "detailed instructions from early in the conversation may be
   lost" when it compacts [^cc-works]. OpenRig reaches the same conclusion: "Editing a file is not
   delivery" (`docs/reference/refocus-channel.md:3-5`).

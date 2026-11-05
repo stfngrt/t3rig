@@ -19,7 +19,9 @@ resources:
       path: skills/to-spec
     - id: to-tickets
       path: skills/to-tickets
+    - id: domain-modeling
+      path: skills/domain-modeling
 profiles:
   default:
     uses:
-      skills: [grilling, wayfinder, to-spec, to-tickets]
+      skills: [grilling, wayfinder, to-spec, to-tickets, domain-modeling]

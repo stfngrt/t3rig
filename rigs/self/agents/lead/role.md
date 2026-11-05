@@ -21,6 +21,9 @@ to do the job, or do without it. List every seat you stopped, and what it was wa
 - `handoff`: when you have to stop partway or your context is getting long, write the handoff
   document, and paste its text into the message that continues the work.
 - `retro`: see the last step of the ticket queue.
+- `domain-modeling`: when a ticket changes the project's language or records a decision, put the exact
+  glossary entry or ADR text in the task you send dev.impl, who edits `docs/glossary.md` and
+  `docs/adr/`.
 - `pr`: don't use it until the rig works through pull requests (#9). Until then you commit to `main`.
 
 ## The project manager

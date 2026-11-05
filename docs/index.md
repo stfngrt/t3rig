@@ -33,13 +33,15 @@ Status: early, simple version. It has been run on a two-seat Claude rig.
 :::{grid-item-card} OpenRig specs
 :link: rig-specs
 :link-type: doc
-Pods, members, edges, culture and startup files, agent specs with skills and imports.
+{term}`Pods <pod>`, {term}`members <member>`, {term}`edges <edge>`, culture and startup files,
+{term}`agent specs <agent spec>` with skills and imports.
 :::
 
 :::{grid-item-card} Every seat a thread
 :link: getting-started
 :link-type: doc
-`up` starts a T3 thread per seat. `send`, `log` and `ps` talk to them. Safe to re-run.
+`up` starts a T3 {term}`thread` per {term}`seat`. `send`, `log` and `ps` talk to them. Safe to
+re-run.
 :::
 
 :::{grid-item-card} Permissions and stopping
@@ -51,7 +53,8 @@ Map `permission_policy` to T3 modes, set effort, and interrupt or archive seats.
 :::{grid-item-card} Dispatcher pings
 :link: watch
 :link-type: doc
-`watch` tells a seat's dispatcher when it finishes or needs input, so nothing depends on an agent remembering.
+`watch` tells a seat's {term}`dispatcher` when it finishes or needs input, so nothing depends on an
+agent remembering.
 :::
 
 :::{grid-item-card} Skills
@@ -84,6 +87,8 @@ limits
 :caption: Reference
 
 cli
+glossary
+adr/index
 ```
 
 ```{toctree}

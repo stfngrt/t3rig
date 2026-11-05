@@ -1,7 +1,8 @@
 # Pinging the dispatcher
 
-`t3rig watch` keeps a seat's dispatcher informed, so nothing depends on an agent remembering to
-report back. A seat's dispatcher is the seat with a `delegates_to` edge to it.
+The {term}`watch` command, `t3rig watch`, keeps a seat's {term}`dispatcher` informed, so nothing
+depends on an agent remembering to report back. A seat's dispatcher is the seat with a
+`delegates_to` edge to it.
 
 ```sh
 uv run t3rig watch examples/two-seat/rig.yaml
@@ -9,17 +10,17 @@ uv run t3rig watch examples/two-seat/rig.yaml
 
 ## What it pings
 
-- It pings when a seat finishes a run, including a failed one, and when a seat has a question or
-  approval waiting. Seats that change together share one ping. A seat's reply to its first message
-  doesn't count.
+- It sends a {term}`ping` when a seat finishes a {term}`run`, including a failed one, and when a
+  seat has a question or approval waiting. Seats that change together share one ping. A seat's reply
+  to its first message doesn't count.
 - A ping is a short pointer with a one-line excerpt and a link. The dispatcher reads the thread for
   the rest. A run stopped partway says so and shows no excerpt, since it has no result.
 
 ## Failures and alerts
 
-- A failed ping is retried on the next check, and prints an `ALERT` after three failures. A stuck
-  seat with no dispatcher also prints one, and so does a seat stopped at a usage limit, which `watch`
-  recognizes from the wording of its last reply.
+- A failed ping is retried on the next check, and prints an `ALERT` after three failures. A
+  {term}`stuck seat` with no dispatcher also prints one, and so does a seat stopped at a usage
+  limit, which `watch` recognizes from the wording of its last reply.
 
 ## State
 

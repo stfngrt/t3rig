@@ -17,7 +17,9 @@ resources:
       path: skills/pr
     - id: retro
       path: skills/retro
+    - id: domain-modeling
+      path: skills/domain-modeling
 profiles:
   default:
     uses:
-      skills: [handoff, pr, retro]
+      skills: [handoff, pr, retro, domain-modeling]

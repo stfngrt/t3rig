@@ -22,11 +22,12 @@ no manual updates. The site is deployed to GitHub Pages from `main`.
 
 ## The self rig
 
-`rigs/self` develops t3rig with t3rig, as four seats. `dev.pm` works with the operator and writes
-specs and tickets as GitHub issues, labelled `needs-approval`. When the operator adds `rig-queue`,
-`dev.lead` takes the issue and hands it to `dev.impl` and `dev.review`. The issue tracker is the
-interface between `dev.pm` and `dev.lead`, so there is no edge between them. That also means `watch`
-pings nobody about `dev.pm`, and its stuck or approval alerts print only on the `watch` console.
+`rigs/self` develops t3rig with t3rig, as four seats. The {term}`project manager` (`dev.pm`) works
+with the {term}`operator` and writes specs and {term}`tickets <ticket>` as GitHub issues, labelled
+{term}`needs-approval`. When the operator adds {term}`rig-queue`, `dev.lead` takes the issue and
+hands it to `dev.impl` and `dev.review`. The issue tracker is the interface between `dev.pm` and
+`dev.lead`, so there is no {term}`edge` between them. That also means {term}`watch` pings nobody
+about `dev.pm`, and its stuck or approval alerts print only on the `watch` console.
 
 The seats use skills from [Matt Pocock's set](https://github.com/mattpocock/skills) (MIT), vendored
 under `rigs/self/agents/*/skills/` with a `CHANGES.md` listing each change. `docs/agents/` holds the

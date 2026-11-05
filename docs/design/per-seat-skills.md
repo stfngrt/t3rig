@@ -6,7 +6,7 @@ operator to approve or change. Claims cite a source, or are marked *repo* (t3rig
 
 ## Problem
 
-An agent spec selects skills for a seat, but `t3rig up` copies them into the seat's `cwd`
+An {term}`agent spec` selects {term}`skills <skill>` for a {term}`seat`, but `t3rig up` copies them into the seat's `cwd`
 (`.claude/skills/<id>/` or `.agents/skills/<id>/`, `src/t3rig/skills.py`, README "Skills", *repo*).
 Every seat in that folder gets every skill, and so does any other Claude or Codex session the
 operator opens there. In `rigs/self` the `ponytail` skill is for `dev.impl`, but all three seats

@@ -1,7 +1,7 @@
 # Permissions and stopping
 
-Seats with a `permission_policy` or `effort`, and `t3rig down`, use T3's `/mcp` tools, which need a
-sign-in. Other seats use the `t3` CLI and need none, but run in T3's default mode, which may be full
+Seats with a {term}`permission policy` or `effort`, and `t3rig down`, use T3's `/mcp` tools, which need a
+sign-in (the {term}`credential`). Other seats use the `t3` CLI and need none, but run in T3's default mode, which may be full
 access.
 
 ```sh
@@ -12,6 +12,8 @@ uv run t3rig down examples/restricted/rig.yaml      # interrupt and archive; add
 ```
 
 ## Policy to mode
+
+A {term}`permission policy` becomes a {term}`runtime mode`, never above the {term}`access level` you signed in with. See also {term}`stop` and {term}`down`.
 
 | `permission_policy` | T3 mode | Roughly |
 |---|---|---|

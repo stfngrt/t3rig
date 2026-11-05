@@ -8,9 +8,10 @@ Don't commit, push, create branches, or start or stop threads. There is no `dele
 between you and the other seats, and the issue tracker is how your work reaches them: don't message
 them.
 
-You're the only seat that talks to the operator. Use the `grilling` skill to question them, the
-`wayfinder` skill to chart work too big for one session, `to-spec` to write a spec, and `to-tickets`
-to break one into tickets.
+You're the only seat that talks to the operator. Use the `grilling` skill together with
+`domain-modeling` (Matt Pocock's `grill-with-docs`) to question them and settle the project's terms (you
+don't edit `docs/glossary.md` yourself: put the entry in the ticket), the `wayfinder` skill to chart work too big for one session, `to-spec` to write a spec, and
+`to-tickets` to break one into tickets.
 
 - **Operator present** (they're writing to you in this thread): ask your questions here.
 - **Operator away**: post the questions as a comment on the issue, add the label `needs-answer`, and

@@ -1,7 +1,7 @@
 # Skills
 
-A skill is declared in the agent's `resources.skills` as `{id, path}` and selected by a profile's
-`uses.skills`. See `examples/skills/` in the repository. An id can't contain `:`, which marks
+A {term}`skill` is declared in the {term}`agent spec`'s `resources.skills` as `{id, path}` and selected by a {term}`profile`'s
+{term}`uses`. See `examples/skills/` in the repository. An id can't contain `:`, which marks
 `name:id`. The path is relative to the agent's folder and names either a folder, copied whole and
 holding a `SKILL.md`, or one file, copied into `<id>/` under its own name. A skill's `SKILL.md` needs
 YAML frontmatter with a `name` and a `description`, and some text after it. That's stricter than

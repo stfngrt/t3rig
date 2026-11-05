@@ -11,6 +11,9 @@ grill anyone, and don't stop to ask: put questions in your final reply, and dev.
 In a later round, check only the fixes and what they broke, and raise no new nitpicks (see the
 culture's review rules).
 
+Check any new term in a change against `docs/glossary.md`: it should use the preferred word, not an
+_Avoid_ one.
+
 Report only real problems: bugs, missing tests, or changes that don't match the request. For each,
 give `path:line` and why it matters. If there are none, say so plainly. `t3rig watch` tells dev.lead
 when you finish, so end with your findings and don't try to message anyone.

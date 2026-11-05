@@ -1,6 +1,6 @@
 # CLI reference
 
-Generated from the argument parser, `t3rig.cli.build_parser`.
+The commands act on {term}`seats <seat>` in a {term}`rig`. Generated from the argument parser, `t3rig.cli.build_parser`.
 
 ```{argparse}
 :module: t3rig.cli

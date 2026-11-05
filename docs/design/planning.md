@@ -5,8 +5,8 @@ operator to approve or change.
 
 ## Goal
 
-Let the lead work from tracked work items instead of one-off briefs, with a person approving at the
-points that matter. The tracker (GitHub via `gh`, GitLab via `glab`) stays the source of truth:
+Let the lead work from tracked work items instead of one-off {term}`briefs <brief>`, with the
+{term}`operator` approving at the points that matter. The tracker (GitHub via `gh`, GitLab via `glab`) stays the source of truth:
 there is no local database. The baseline is the manual "Ticket queue" in
 `rigs/self/agents/lead/role.md`, which already uses an issue as the work item, labels as state and
 comments as the record. This design makes that fixed and checkable.
@@ -85,7 +85,7 @@ and finish. Only a person's verb comment makes `approve`, `deny`, `answer`, `hol
 
 ## (c) Human verbs and how a person issues them
 
-A verb is a comment whose first line is a slash command. A bare label click is not a verb; it is
+A {term}`human verb` is a comment whose first line is a slash command. A bare label click is not a verb; it is
 flagged (see below).
 
 | Command | t3rig effect | Allowed in | Needs | OpenRig verb and deviation |
@@ -131,7 +131,7 @@ comment command is a verb; a bare label change is never one.
 
 ## (d) How the planning dial decides when approval is needed
 
-The lead plans each item at a rung (`planning-dial.md:10-25`) chosen from the work's uncertainty and
+The lead plans each item at a rung of the {term}`planning dial` (`planning-dial.md:10-25`) chosen from the work's uncertainty and
 consequences, not how central it is (`planning-dial.md:37-45`). It writes the rung in the plan
 comment (`planning-dial.md:53-54`).
 
@@ -158,7 +158,7 @@ The default rung and the lowest rung that needs approval live in settings (see (
 
 ## (e) How `watch` notices tracker changes
 
-Today `watch` polls seat threads and pings a dispatcher (`src/t3rig/watch.py`). It remembers what it
+Today {term}`watch` polls seat threads and pings a dispatcher (`src/t3rig/watch.py`). It remembers what it
 has pinged in a state file under `~/.local/state/t3rig/` (`state_path`, `load_state`, `save_state`),
 saved after every `tick`, so a restart neither repeats nor misses a ping. Delivery is at least once
 across restarts: a crash can repeat a ping, never lose one. OpenRig's guarantee is at most once per

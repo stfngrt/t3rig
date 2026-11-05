@@ -1,0 +1,24 @@
+image: ghcr.io/astral-sh/uv:python3.13-bookworm
+
+variables:
+  UV_LINK_MODE: copy
+
+default:
+  before_script:
+    - uv sync --locked
+
+lint:
+  script:
+    - uv run ruff check .
+
+format:
+  script:
+    - uv run ruff format --check .
+
+test:
+  script:
+    - uv run pytest
+
+docs:
+  script:
+    - uv run sphinx-build -W -b html docs docs/_build/html

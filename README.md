@@ -7,6 +7,8 @@ Run [OpenRig](https://github.com/mvschwarz/openrig)-compatible `rig.yaml` files 
 
 Status: early, simple version. It has been run on a two-seat Claude rig.
 
+Full documentation: <https://stfngrt.github.io/t3rig/>
+
 ## Usage
 
 ```sh
@@ -171,4 +173,6 @@ Requires [uv](https://docs.astral.sh/uv/).
 uv run t3rig --version
 uv run pytest
 uv run ruff check .
+uv run ruff format --check .
+uv run sphinx-build -W -b html docs docs/_build/html   # the docs site
 ```

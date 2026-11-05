@@ -6,3 +6,4 @@ __pycache__/
 dist/
 examples/skills/.claude/
 examples/skills/.agents/
+docs/_build/

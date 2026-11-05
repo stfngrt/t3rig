@@ -1,0 +1,52 @@
+"""A thin wrapper over the `t3` command-line tool."""
+
+import json
+import subprocess
+from typing import Any
+
+TIMEOUT_SECONDS = 60
+
+
+class T3Error(Exception):
+    """A `t3` command failed or couldn't run."""
+
+
+class T3Cli:
+    def __init__(self, executable: str = "t3") -> None:
+        self.executable = executable
+
+    def _run(
+        self, args: list[str], stdin: str | None = None, timeout: int | None = TIMEOUT_SECONDS
+    ) -> str:
+        command = [self.executable, *args]
+        try:
+            result = subprocess.run(
+                command, input=stdin, capture_output=True, text=True, timeout=timeout, check=False
+            )
+        except FileNotFoundError as error:
+            raise T3Error(f"can't find `{self.executable}`; is T3 Code installed?") from error
+        except subprocess.TimeoutExpired as error:
+            raise T3Error(
+                f"`{' '.join(args[:2])}` timed out; it may still have taken effect"
+            ) from error
+        if result.returncode != 0:
+            detail = result.stderr.strip() or result.stdout.strip()
+            raise T3Error(f"`{' '.join(args[:2])}` exited {result.returncode}: {detail}")
+        return result.stdout
+
+    def list_threads(self, project: str) -> list[dict[str, Any]]:
+        """Threads in the project containing this path, newest first."""
+        output = self._run(["thread", "list", "--project", project, "--json"])
+        return json.loads(output)
+
+    def start_thread(
+        self, project: str, title: str, message: str, provider: str | None, model: str | None
+    ) -> str:
+        args = ["thread", "start", "--title", title]
+        if provider and model:
+            args += ["--provider", provider, "--model", model]
+        return self._run([*args, project, "-"], stdin=message).strip()
+
+    def send(self, thread_id: str, message: str, wait: bool = False) -> str:
+        args = ["thread", "send", *(["--wait"] if wait else []), thread_id, "-"]
+        return self._run(args, stdin=message, timeout=None if wait else TIMEOUT_SECONDS)

@@ -47,8 +47,17 @@ OPENRIG_ONLY_MEMBER_KEYS = {
 EDGE_KEYS = {"kind", "from", "to"}
 EDGE_KINDS = {"delegates_to", "spawned_by", "can_observe", "collaborates_with", "escalates_to"}
 RUNTIMES = {"claude-code", "codex"}
-AGENT_KEYS = {"name", "version", "description", "defaults", "resources", "profiles", "startup"}
-OPENRIG_ONLY_AGENT_KEYS = {"imports"}
+AGENT_KEYS = {
+    "name",
+    "version",
+    "description",
+    "defaults",
+    "imports",
+    "resources",
+    "profiles",
+    "startup",
+}
+IMPORT_KEYS = {"ref", "version"}
 PROFILE_KEYS = {"summary", "description", "preferences", "uses", "startup", "lifecycle"}
 PREFERENCE_KEYS = {"runtime", "model", "lifecycle"}
 OPENRIG_ONLY_PREFERENCE_KEYS = {"effort", "advisor"}
@@ -249,22 +258,125 @@ def _parse_preferences(raw: Any, where: str, errors: list[str]) -> str | None:
     return model
 
 
-def _selected_guidance(
-    agent: dict[str, Any], uses: dict[str, Any], base: Path, where: str, errors: list[str]
-) -> list[StartupText]:
-    selected = uses.get("guidance") or []
-    resources = agent.get("resources") or {}
-    pool = resources.get("guidance") if isinstance(resources, dict) else None
-    paths = {item.get("id"): item.get("path") for item in pool or [] if isinstance(item, dict)}
-    texts = []
-    for guidance_id in selected if isinstance(selected, list) else []:
-        path = paths.get(guidance_id)
-        if not isinstance(path, str) or not _is_safe_relative(path):
+@dataclass(frozen=True)
+class _Import:
+    name: str
+    directory: Path
+    spec: dict[str, Any]
+
+
+def _load_imports(
+    agent: dict[str, Any], directory: Path, where: str, errors: list[str]
+) -> list[_Import]:
+    """An agent's imports, under OpenRig's rules. They only add resources for `uses` to select."""
+    raw = agent.get("imports") or []
+    if not isinstance(raw, list):
+        errors.append(f"{where}: must be a list")
+        return []
+    imports: list[_Import] = []
+    for index, entry in enumerate(raw):
+        item_where = f"{where}[{index}]"
+        if not isinstance(entry, dict):
+            errors.append(f"{item_where}: must be a mapping")
+            continue
+        _check_keys(entry, IMPORT_KEYS, set(), item_where, errors)
+        ref = entry.get("ref")
+        target = _agent_dir(ref, directory) if isinstance(ref, str) else None
+        if target is None:
             errors.append(
-                f"{where}.guidance: no guidance resource {guidance_id!r} with a safe path"
+                f"{item_where}.ref: must be local:<relative path> or path:<absolute path>"
             )
             continue
-        text = _read_text(base / path, f"{where}.guidance", errors)
+        if target.resolve() == directory.resolve():
+            errors.append(f"{item_where}.ref: an agent can't import itself")
+            continue
+        spec = _read_yaml_mapping(target / "agent.yaml", f"{item_where}.ref", errors)
+        if spec is None:
+            continue
+        name = spec.get("name")
+        if not isinstance(name, str) or not name or ":" in name:
+            errors.append(f"{item_where}: imported spec needs a name without ':' (got {name!r})")
+            continue
+        wanted = entry.get("version")
+        if wanted is not None and spec.get("version") != wanted:
+            errors.append(
+                f"{item_where}: requires version {wanted!r}, but {name} is {spec.get('version')!r}"
+            )
+        if spec.get("imports"):
+            errors.append(f"{item_where}: imported spec {name} can't have imports of its own")
+        if any(existing.name == name for existing in imports):
+            errors.append(f"{item_where}: two imports are named {name!r}")
+        imports.append(_Import(name, target, spec))
+    return imports
+
+
+def _guidance_path(spec: dict[str, Any], guidance_id: str) -> str | None:
+    resources = spec.get("resources")
+    pool = resources.get("guidance") if isinstance(resources, dict) else None
+    for item in pool if isinstance(pool, list) else []:
+        if isinstance(item, dict) and item.get("id") == guidance_id:
+            return item.get("path")
+    return None
+
+
+def _find_guidance(
+    guidance_id: Any,
+    agent: dict[str, Any],
+    directory: Path,
+    imports: list[_Import],
+    where: str,
+    errors: list[str],
+) -> tuple[Path, str] | None:
+    """Find a guidance resource. `name:id` names an import; a bare id tries the agent first."""
+    if not isinstance(guidance_id, str):
+        errors.append(f"{where}: guidance ids must be strings (got {guidance_id!r})")
+        return None
+    candidates: list[tuple[str, Path, dict[str, Any]]]
+    if ":" in guidance_id:
+        namespace, bare = guidance_id.split(":", 1)
+        candidates = [(i.name, i.directory, i.spec) for i in imports if i.name == namespace]
+        if not candidates:
+            errors.append(f"{where}: {guidance_id!r} names no imported spec")
+            return None
+    else:
+        bare = guidance_id
+        own = _guidance_path(agent, bare)
+        if own is not None:
+            candidates = [("", directory, agent)]
+        else:
+            candidates = [
+                (i.name, i.directory, i.spec)
+                for i in imports
+                if _guidance_path(i.spec, bare) is not None
+            ]
+            if len(candidates) > 1:
+                names = ", ".join(name for name, _, _ in candidates)
+                errors.append(f"{where}: {bare!r} is ambiguous ({names}); qualify it as name:id")
+                return None
+    for _, base, spec in candidates:
+        path = _guidance_path(spec, bare)
+        if isinstance(path, str) and _is_safe_relative(path):
+            return base, path
+    errors.append(f"{where}: no guidance resource {guidance_id!r} with a safe path")
+    return None
+
+
+def _selected_guidance(
+    agent: dict[str, Any],
+    uses: dict[str, Any],
+    base: Path,
+    imports: list[_Import],
+    where: str,
+    errors: list[str],
+) -> list[StartupText]:
+    selected = uses.get("guidance") or []
+    texts = []
+    for guidance_id in selected if isinstance(selected, list) else []:
+        found = _find_guidance(guidance_id, agent, base, imports, f"{where}.guidance", errors)
+        if found is None:
+            continue
+        root, path = found
+        text = _read_text(root / path, f"{where}.guidance", errors)
         if text is not None:
             texts.append(StartupText(path, text))
     return texts
@@ -281,7 +393,7 @@ def _load_agent(
     agent = _read_yaml_mapping(directory / "agent.yaml", f"{where}.agent_ref", errors)
     if agent is None:
         return None, []
-    _check_keys(agent, AGENT_KEYS, OPENRIG_ONLY_AGENT_KEYS, f"{where} agent", errors)
+    _check_keys(agent, AGENT_KEYS, set(), f"{where} agent", errors)
     for key in ("name", "version"):
         if not isinstance(agent.get(key), str):
             errors.append(f"{where} agent.{key}: required string")
@@ -303,8 +415,9 @@ def _load_agent(
     preferred = _parse_preferences(
         selected.get("preferences"), f"{profile_where}.preferences", errors
     )
+    imports = _load_imports(agent, directory, f"{where} agent.imports", errors)
     texts = [
-        *_selected_guidance(agent, uses, directory, f"{profile_where}.uses", errors),
+        *_selected_guidance(agent, uses, directory, imports, f"{profile_where}.uses", errors),
         *_parse_startup(agent.get("startup"), directory, f"{where} agent.startup", errors),
         *_parse_startup(selected.get("startup"), directory, f"{profile_where}.startup", errors),
     ]

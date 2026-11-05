@@ -49,12 +49,13 @@ disconnects it from its seat.
 
 - Rig specs at version `0.2`: pods, members, edges, `culture_file` and `startup.files` at the rig,
   pod and member levels.
-- Agent specs: `startup.files`, `uses.guidance`, and `model` from `defaults` or a profile's
-  `preferences`. The model used is the member's, then the profile's, then the agent's.
+- Agent specs: `startup.files`, `uses.guidance`, `imports`, and `model` from `defaults` or a
+  profile's `preferences`. The model used is the member's, then the profile's, then the agent's.
+  As in OpenRig, imports only add resources for `uses` to select, and can't import further specs.
 - `claude-code` and `codex` seats. A `codex` seat needs a model.
 
-A spec using anything else is refused with a clear error, including skills, startup actions, agent
-imports, `effort`, services, continuity policies and permission settings.
+A spec using anything else is refused with a clear error, including skills, plugins, startup actions,
+`effort`, services, continuity policies and permission settings.
 
 Unlike OpenRig, all instructions go in the seat's first message, in OpenRig's layer order, whatever
 their `delivery_hint`. Nothing is written to the repo, so a long-running seat can lose them when its

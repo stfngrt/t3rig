@@ -160,12 +160,103 @@ def test_lifecycle_defaults_pass_and_others_are_refused(tmp_path: Path) -> None:
     assert "restore_policy" in errors_for(write_rig(tmp_path, claude, agent_with(bad)))
 
 
-def test_refuses_effort_and_imports_for_now(tmp_path: Path) -> None:
+def test_refuses_effort_for_now(tmp_path: Path) -> None:
     claude = pods(MEMBER % ("a", "claude-code"))
     effort = "defaults: {effort: high}"
     assert "defaults.effort" in errors_for(write_rig(tmp_path, claude, agent_with(effort)))
-    imports = "imports: [{ref: 'local:../shared'}]"
-    assert "agent.imports" in errors_for(write_rig(tmp_path, claude, agent_with(imports)))
+
+
+def write_imports(root: Path, agent: str, *shared: tuple[str, str]) -> Path:
+    """Add specs under root/<dir> holding agent text, then a rig using the given agent."""
+    for directory, text in shared:
+        (root / directory).mkdir(parents=True, exist_ok=True)
+        (root / directory / "agent.yaml").write_text(text)
+    return write_rig(root, pods(MEMBER % ("a", "claude-code")), agent)
+
+
+def import_agent(guidance: str, imports: str = "[{ref: 'local:../../shared'}]") -> str:
+    return (
+        f'name: a\nversion: "1"\nimports: {imports}\n'
+        f"profiles: {{default: {{uses: {{guidance: [{guidance}]}}}}}}\n"
+    )
+
+
+SHARED = (
+    "shared",
+    'name: shared\nversion: "2"\nresources: {guidance: [{id: role, path: role.md}]}\n'
+    "startup: {files: [{path: not-delivered.md}]}\n",
+)
+
+
+def test_imported_guidance_reads_from_the_imported_folder(tmp_path: Path) -> None:
+    (tmp_path / "shared").mkdir()
+    (tmp_path / "shared" / "role.md").write_text("shared role")
+    for guidance in ("role", "shared:role"):
+        rig = load_rig(write_imports(tmp_path, import_agent(guidance), SHARED))
+        assert [item.text for item in rig.seats[0].startup] == ["shared role"]
+
+
+def test_own_guidance_wins_over_imported(tmp_path: Path) -> None:
+    (tmp_path / "shared").mkdir()
+    (tmp_path / "shared" / "role.md").write_text("shared role")
+    (tmp_path / "agents" / "a").mkdir(parents=True)
+    (tmp_path / "agents" / "a" / "own.md").write_text("own role")
+    agent = import_agent("role") + "resources: {guidance: [{id: role, path: own.md}]}\n"
+    rig = load_rig(write_imports(tmp_path, agent, SHARED))
+    assert rig.seats[0].startup[0].text == "own role"
+    qualified = agent.replace("guidance: [role]", "guidance: [shared:role]")
+    rig = load_rig(write_imports(tmp_path, qualified, SHARED))
+    assert rig.seats[0].startup[0].text == "shared role"
+
+
+def test_unused_imports_add_nothing(tmp_path: Path) -> None:
+    agent = (
+        'name: a\nversion: "1"\nimports: [{ref: "local:../../shared"}]\nprofiles: {default: {}}\n'
+    )
+    assert load_rig(write_imports(tmp_path, agent, SHARED)).seats[0].startup == ()
+
+
+def test_refuses_ambiguous_guidance(tmp_path: Path) -> None:
+    (tmp_path / "shared").mkdir()
+    (tmp_path / "shared" / "role.md").write_text("x")
+    other = ("other", SHARED[1].replace("name: shared", "name: other"))
+    imports = "[{ref: 'local:../../shared'}, {ref: 'local:../../other'}]"
+    errors = errors_for(write_imports(tmp_path, import_agent("role", imports), SHARED, other))
+    assert "'role' is ambiguous (shared, other)" in errors
+
+
+@pytest.mark.parametrize(
+    ("imports", "guidance", "shared", "expected"),
+    [
+        ("[{ref: 'local:../../shared', version: '9'}]", "", SHARED[1], "requires version '9'"),
+        ("[{ref: 'local:../../ghost'}]", "", SHARED[1], "can't read"),
+        ("[{ref: 'local:.'}]", "", SHARED[1], "can't import itself"),
+        ("[{ref: 'https://x/y'}]", "", SHARED[1], "must be local:"),
+        (
+            "[{ref: 'local:../../shared'}]",
+            "",
+            SHARED[1] + "imports: [{ref: 'local:../x'}]\n",
+            "imports of its own",
+        ),
+        ("[{ref: 'local:../../shared'}]", "", 'name: "a:b"\n', "without ':'"),
+        ("[{ref: 'local:../../shared'}]", "nope:role", SHARED[1], "names no imported spec"),
+        ("[{ref: 'local:../../shared'}]", "ghost", SHARED[1], "no guidance resource 'ghost'"),
+        (
+            "[{ref: 'local:../../shared'}, {ref: 'path:SHARED'}]",
+            "",
+            SHARED[1],
+            "two imports are named 'shared'",
+        ),
+    ],
+)
+def test_refuses_bad_imports(
+    tmp_path: Path, imports: str, guidance: str, shared: str, expected: str
+) -> None:
+    imports = imports.replace("SHARED", str(tmp_path / "shared"))
+    errors = errors_for(
+        write_imports(tmp_path, import_agent(guidance, imports), ("shared", shared))
+    )
+    assert expected in errors
 
 
 def test_agent_needs_name_and_version(tmp_path: Path) -> None:

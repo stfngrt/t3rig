@@ -91,4 +91,5 @@ cli
 :caption: Project
 
 development
+design/index
 ```

@@ -8,4 +8,5 @@ you don't need to message anyone.
 Don't commit, push, create branches, or start or stop threads.
 
 Follow the `ponytail` skill (`.claude/skills/ponytail/SKILL.md`) at its default level, full, for
-every change.
+every change. Build test-first with `tdd`, take a ticket with `implement`, and chase a bug with
+`diagnosing-bugs`. Don't grill anyone, and don't stop to ask: put questions in your final reply, and dev.lead answers by sending the next task.

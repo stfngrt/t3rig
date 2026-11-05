@@ -22,6 +22,11 @@ pods:
         profile: default
         runtime: claude-code
         cwd: ../..
+      - id: pm
+        agent_ref: "local:agents/pm"
+        profile: default
+        runtime: claude-code
+        cwd: ../..
     edges:
       - kind: delegates_to
         from: lead

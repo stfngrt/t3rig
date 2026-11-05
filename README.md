@@ -176,3 +176,7 @@ uv run ruff check .
 uv run ruff format --check .
 uv run sphinx-build -W -b html docs docs/_build/html   # the docs site
 ```
+
+## The self rig
+
+`rigs/self` develops t3rig with t3rig; see [The self rig](https://stfngrt.github.io/t3rig/development.html#the-self-rig).

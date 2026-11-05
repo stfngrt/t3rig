@@ -15,7 +15,7 @@ extensions = [
 ]
 myst_enable_extensions = ["colon_fence", "deflist"]
 myst_heading_anchors = 3
-exclude_patterns = ["_build"]
+exclude_patterns = ["_build", "agents"]  # agents/ is for the rig's seats, not the site
 
 html_theme = "furo"
 html_title = "t3rig"

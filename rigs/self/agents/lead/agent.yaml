@@ -7,5 +7,17 @@ startup:
   files:
     - path: role.md
       delivery_hint: send_text
+resources:
+  skills:
+    # From github.com/mattpocock/skills (MIT) at 4ae2317ddb22b046e26455e4f9c9b3aaaf62212d,
+    # changed as each folder's CHANGES.md lists.
+    - id: handoff
+      path: skills/handoff
+    - id: pr
+      path: skills/pr
+    - id: retro
+      path: skills/retro
 profiles:
-  default: {}
+  default:
+    uses:
+      skills: [handoff, pr, retro]

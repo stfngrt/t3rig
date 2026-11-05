@@ -7,8 +7,13 @@ This team develops t3rig, the tool it's running on. Read `README.md` first.
 - Don't commit, push, or change anything outside this repo except where your task says to.
 - A restricted seat stops for approval when it reads files outside this repo, so don't ask it to. If
   it needs something from outside, read it yourself and pass the relevant text in your message.
+- Only dev.pm grills or holds a conversation with the operator. Other seats put questions in their final reply to their dispatcher. The lead still takes tasks from the operator, and posts "Questions for the operator" with `needs-answer` on issues.
 - You share one checkout. Never run anything that disturbs it for other seats, such as `git stash`,
   `git checkout`, `git reset` or `git clean`.
 - The rig posts to GitHub under the operator's account until it has its own bot identity (#9). So
   start every issue body, comment and PR description you write with a line naming your seat, such as
   `🤖 dev.lead (t3rig)`, so the operator's posts and the rig's are easy to tell apart.
+- Review rounds: at most 2 per change, unless the issue body has a line `Review rounds: N`. Round 1
+  reviews the whole change; later rounds check only the fixes and what they broke, with no new
+  nitpicks. At the limit, remaining findings go under "Left open" in the closing comment, or into a
+  new issue if they're real bugs, and the lead decides whether the change ships.

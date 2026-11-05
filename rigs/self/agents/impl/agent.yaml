@@ -12,7 +12,15 @@ resources:
     # From github.com/DietrichGebert/ponytail (MIT), skills/ponytail at 96608e0.
     - id: ponytail
       path: skills/ponytail
+    # From github.com/mattpocock/skills (MIT) at 4ae2317ddb22b046e26455e4f9c9b3aaaf62212d,
+    # changed as each folder's CHANGES.md lists.
+    - id: tdd
+      path: skills/tdd
+    - id: diagnosing-bugs
+      path: skills/diagnosing-bugs
+    - id: implement
+      path: skills/implement
 profiles:
   default:
     uses:
-      skills: [ponytail]
+      skills: [ponytail, tdd, diagnosing-bugs, implement]

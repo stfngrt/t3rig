@@ -1,0 +1,25 @@
+name: pm
+version: "1.0.0"
+defaults:
+  model: claude-opus-5-5
+  effort: medium
+startup:
+  files:
+    - path: role.md
+      delivery_hint: send_text
+resources:
+  skills:
+    # From github.com/mattpocock/skills (MIT) at 4ae2317ddb22b046e26455e4f9c9b3aaaf62212d,
+    # changed as each folder's CHANGES.md lists.
+    - id: grilling
+      path: skills/grilling
+    - id: wayfinder
+      path: skills/wayfinder
+    - id: to-spec
+      path: skills/to-spec
+    - id: to-tickets
+      path: skills/to-tickets
+profiles:
+  default:
+    uses:
+      skills: [grilling, wayfinder, to-spec, to-tickets]

@@ -19,11 +19,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from t3rig.rig import RigError, SeatStatus, envelope, seat_statuses
+from t3rig.rig import BUSY_STATUSES, RigError, SeatStatus, envelope, seat_statuses
 from t3rig.spec import Rig
 from t3rig.t3 import T3Cli, T3Error
 
-BUSY_STATUSES = {"preparing", "queued", "starting", "running", "waiting"}
 EXCERPT_CHARS = 120
 ALERT_AFTER_FAILURES = 3
 SENDER = "t3rig watch"
@@ -53,6 +52,11 @@ def save_state(path: Path, state: dict[str, Any]) -> None:
     with tempfile.NamedTemporaryFile("w", dir=path.parent, delete=False) as handle:
         json.dump(state, handle, indent=2)
     os.replace(handle.name, path)
+
+
+def last_check(rig: Rig) -> str | None:
+    """When `watch` last checked this rig, if it ever has."""
+    return load_state(state_path(rig)).get("updated_at")
 
 
 def dispatchers(rig: Rig) -> dict[str, str]:

@@ -1,14 +1,16 @@
 """Run OpenRig-compatible rig specs as T3 Code threads."""
 
 import argparse
+import json
 import sys
 from collections.abc import Sequence
+from datetime import UTC, datetime
 
 from t3rig import __version__
-from t3rig.rig import RigError, seat_statuses, send, up
+from t3rig.rig import RigError, seat_rows, select_seats, send, up
 from t3rig.spec import Rig, SpecError, load_rig
 from t3rig.t3 import T3Cli, T3Error
-from t3rig.watch import watch
+from t3rig.watch import dispatchers, last_check, watch
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -19,14 +21,27 @@ def build_parser() -> argparse.ArgumentParser:
     for name, description in (
         ("validate", "Check that t3rig can run a rig spec."),
         ("up", "Start a T3 thread for each seat that doesn't have one."),
-        ("ps", "Show each seat's T3 thread and status."),
     ):
         commands.add_parser(name, help=description).add_argument("rig", help="path to rig.yaml")
 
-    send_parser = commands.add_parser("send", help="Message a seat through its T3 thread.")
+    ps_parser = commands.add_parser("ps", help="Show each seat's T3 thread and status.")
+    ps_parser.add_argument("rig", help="path to rig.yaml")
+    ps_parser.add_argument("--json", action="store_true", help="print JSON")
+
+    send_parser = commands.add_parser("send", help="Message seats through their T3 threads.")
     send_parser.add_argument("rig", help="path to rig.yaml")
-    send_parser.add_argument("seat", help="seat as pod.member")
-    send_parser.add_argument("message", help="the message, or - to read it from stdin")
+    send_parser.add_argument(
+        "args",
+        nargs="+",
+        metavar="[seat] message",
+        help="seat as pod.member, then the message or - to read it from stdin; "
+        "leave out the seat with --pod or --all",
+    )
+    target = send_parser.add_mutually_exclusive_group()
+    target.add_argument("--pod", help="send to every seat in this pod")
+    target.add_argument("--all", action="store_true", help="send to every seat in the rig")
+    send_parser.add_argument("--from", dest="sender", metavar="SEAT", help="the sending seat")
+    send_parser.add_argument("--raw", action="store_true", help="leave out the From/To header")
     send_parser.add_argument("--wait", action="store_true", help="wait for the seat's reply")
 
     watch_parser = commands.add_parser(
@@ -49,25 +64,77 @@ def _up(rig: Rig, t3: T3Cli) -> None:
         print(line)
 
 
-def _ps(rig: Rig, t3: T3Cli) -> None:
-    rows = [("SEAT", "RUNTIME", "STATUS", "THREAD")]
-    for status in seat_statuses(rig, t3):
-        thread = status.thread or {}
-        rows.append(
+def _ago(timestamp: str | None) -> str:
+    if not timestamp:
+        return "-"
+    seconds = int((datetime.now(UTC) - datetime.fromisoformat(timestamp)).total_seconds())
+    for size, unit in ((86400, "d"), (3600, "h"), (60, "m")):
+        if seconds >= size:
+            return f"{seconds // size}{unit} ago"
+    return f"{max(seconds, 0)}s ago"
+
+
+def _status_text(row: dict) -> str:
+    pending = row["pending_requests"]
+    return f"needs input ({pending})" if pending else row["status"]
+
+
+def _ps(rig: Rig, t3: T3Cli, as_json: bool) -> None:
+    rows = seat_rows(rig, t3)
+    checked = last_check(rig)
+    if as_json:
+        print(json.dumps({"seats": rows, "watch_last_check": checked}, indent=2))
+        return
+    table = [("SEAT", "RUNTIME", "MODEL", "MODE", "STATUS", "UPDATED", "THREAD")]
+    for row in rows:
+        table.append(
             (
-                status.seat.qualified_id,
-                status.seat.runtime,
-                thread.get("status", "not started"),
-                thread.get("link", "-"),
+                row["seat"],
+                row["runtime"],
+                row["model"] or "-",
+                row["mode"] or "-",
+                _status_text(row),
+                _ago(row["updated_at"]),
+                row["link"] or "-",
             )
         )
-    widths = [max(len(row[i]) for row in rows) for i in range(3)]
-    for row in rows:
+    widths = [max(len(line[i]) for line in table) for i in range(len(table[0]))]
+    for line in table:
         print(
-            "  ".join(cell.ljust(width) for cell, width in zip(row, widths, strict=False))
-            + "  "
-            + row[3]
+            "  ".join(cell.ljust(width) for cell, width in zip(line, widths, strict=True)).rstrip()
         )
+    for row in rows:
+        if row["extra_threads"]:
+            print(
+                f"warning: {row['seat']} has {row['extra_threads']} older thread(s) titled "
+                f"{row['session_name']}; using the newest",
+                file=sys.stderr,
+            )
+    if dispatchers(rig):
+        print(f"watch: last check {_ago(checked)}" if checked else "watch: has never run")
+
+
+def _send(rig: Rig, t3: T3Cli, args: argparse.Namespace) -> int:
+    fan_out = args.pod is not None or args.all
+    expected = 1 if fan_out else 2
+    if len(args.args) != expected:
+        usage = "a message" if fan_out else "a seat and a message"
+        raise RigError(f"send needs {usage}")
+    if fan_out and args.wait:
+        raise RigError("--wait only works with one seat")
+    seat = None if fan_out else args.args[0]
+    seats = select_seats(rig, seat, args.pod, args.all, args.sender)
+    text = args.args[-1]
+    message = sys.stdin.read() if text == "-" else text
+    results = send(rig, t3, seats, message, args.sender, args.raw, args.wait)
+    for result in results:
+        if result.error:
+            print(f"error: {result.seat.qualified_id}: {result.error}", file=sys.stderr)
+        elif fan_out:
+            print(f"{result.seat.qualified_id}: {result.output.strip()}")
+        else:
+            print(result.output, end="")
+    return 1 if any(result.error for result in results) else 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -80,10 +147,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         elif args.command == "up":
             _up(rig, t3)
         elif args.command == "ps":
-            _ps(rig, t3)
+            _ps(rig, t3, args.json)
         elif args.command == "send":
-            message = sys.stdin.read() if args.message == "-" else args.message
-            print(send(rig, t3, args.seat, message, wait=args.wait), end="")
+            return _send(rig, t3, args)
         elif args.command == "watch":
             watch(rig, t3, args.interval, once=args.once, out=lambda line: print(line, flush=True))
     except KeyboardInterrupt:

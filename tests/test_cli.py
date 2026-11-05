@@ -25,3 +25,12 @@ def test_validate_reports_errors(tmp_path: Path, capsys: pytest.CaptureFixture[s
     rig.write_text('version: "0.1"\nname: x\npods: []\n')
     assert main(["validate", str(rig)]) == 1
     assert "rig.version" in capsys.readouterr().err
+
+
+def test_send_needs_seat_and_message(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["send", str(EXAMPLE), "just-a-message"]) == 1
+    assert "a seat and a message" in capsys.readouterr().err
+    assert main(["send", str(EXAMPLE), "--all", "dev.impl", "hello"]) == 1
+    assert "needs a message" in capsys.readouterr().err
+    assert main(["send", str(EXAMPLE), "--all", "--wait", "hello"]) == 1
+    assert "only works with one seat" in capsys.readouterr().err

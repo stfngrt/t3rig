@@ -12,9 +12,13 @@ Status: early, simple version. It has been run on a two-seat Claude rig.
 ```sh
 uv run t3rig validate examples/two-seat/rig.yaml   # check the spec; starts nothing
 uv run t3rig up examples/two-seat/rig.yaml         # start a thread per seat; safe to re-run
-uv run t3rig ps examples/two-seat/rig.yaml         # show status and thread links
+uv run t3rig ps examples/two-seat/rig.yaml         # status, model, mode and links; --json too
 uv run t3rig send examples/two-seat/rig.yaml dev.impl "Hello"        # add --wait for the reply
+uv run t3rig send examples/two-seat/rig.yaml --pod dev "Hello"       # or --all for every seat
 ```
+
+Messages carry a `From:`/`To:` header unless you pass `--raw`. Seats are told to name themselves with
+`--from`. It's self-declared, so treat it as a label rather than proof of who sent the message.
 
 ### Pinging the dispatcher
 

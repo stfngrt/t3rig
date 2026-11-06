@@ -6,20 +6,12 @@ import pytest
 
 from t3rig.cli import _ps
 from t3rig.rig import RigError
+from t3rig.seat_watch import dispatchers, excerpt, waiting_approval
 from t3rig.spec import Edge, Rig, Seat, TrackerSettings
 from t3rig.t3 import T3Error
 from t3rig.threads import MemoryT3
 from t3rig.tracker import Issue, TrackerError
-from t3rig.watch import (
-    Watcher,
-    dispatchers,
-    excerpt,
-    single_watcher,
-    state_path,
-    waiting_approval,
-    watch,
-    watch_running,
-)
+from t3rig.watch import Watcher, single_watcher, state_path, watch, watch_running
 
 LEAD, IMPL, QA = "dev-lead@r", "dev-impl@r", "dev-qa@r"
 

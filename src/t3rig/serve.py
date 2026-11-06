@@ -21,15 +21,13 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, PackageLoader
 
+from t3rig.issue_watch import ANSWER_LABEL, IN_PROGRESS_LABEL, QUEUE_LABEL
 from t3rig.rig import RigError, ago, seat_rows
 from t3rig.spec import Rig
 from t3rig.t3 import T3Error
 from t3rig.threads import BUSY_STATUSES, T3
 from t3rig.tracker import Issue, Tracker, tracker_for
 from t3rig.watch import (
-    ANSWER_LABEL,
-    IN_PROGRESS_LABEL,
-    QUEUE_LABEL,
     Watcher,
     dispatchers,
     last_check,
@@ -207,7 +205,7 @@ class RigServer:
                 self.log(f"{row['seat']}: {old} → {row['status']}", "seat")
         self.seats = seats
         if self.watcher is not None:
-            self.issues = self.watcher.issues
+            self.issues = self.watcher.open_issues()
 
     async def notify(self) -> None:
         async with self.changed:

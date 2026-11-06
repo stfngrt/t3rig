@@ -128,7 +128,7 @@ class SpecError(Exception):
 
 @dataclass(frozen=True)
 class StartupText:
-    """Instructions for a seat, delivered in its first message."""
+    """Instructions for a seat, delivered in its brief."""
 
     path: str
     text: str
@@ -162,7 +162,7 @@ class Seat:
     skills: tuple[SkillFile, ...] = ()
 
     @property
-    def qualified_id(self) -> str:
+    def seat_id(self) -> str:
         return f"{self.pod}.{self.id}"
 
 
@@ -191,11 +191,11 @@ class Rig:
     review_rounds: int = DEFAULT_REVIEW_ROUNDS
 
     def session_name(self, seat: Seat) -> str:
-        """OpenRig's canonical seat name, used here as the T3 thread title."""
+        """OpenRig's session name for a seat, used here as the T3 thread title."""
         return f"{seat.pod}-{seat.id}@{self.name}"
 
-    def seat(self, qualified_id: str) -> Seat | None:
-        return next((s for s in self.seats if s.qualified_id == qualified_id), None)
+    def seat(self, seat_id: str) -> Seat | None:
+        return next((s for s in self.seats if s.seat_id == seat_id), None)
 
 
 def _check_keys(
@@ -274,7 +274,7 @@ def _check_folder_name(name: str, where: str, errors: list[str]) -> bool:
 
 
 def _parse_startup(raw: Any, base: Path, where: str, errors: list[str]) -> list[StartupItem]:
-    """A startup block's files. Text goes in the first message; a skill_install file is copied."""
+    """A startup block's files. Text goes in the brief; a skill_install file is copied."""
     if raw is None:
         return []
     if not isinstance(raw, dict):
@@ -940,19 +940,19 @@ def load_rig(path: str | Path) -> Rig:
             if edge is not None:
                 pod_edges.append((edge, edge_where))
 
-    qualified = {seat.qualified_id for seat in seats}
+    seat_ids = {seat.seat_id for seat in seats}
     edges: list[Edge] = []
     for edge, where in pod_edges:
-        _check_edge_ends(edge, False, qualified, where, errors)
+        _check_edge_ends(edge, False, seat_ids, where, errors)
         edges.append(edge)
     for edge_index, raw in enumerate(data.get("edges") or []):
         where = f"rig.edges[{edge_index}]"
         edge = _parse_edge(raw, None, where, errors)
         if edge is not None:
-            _check_edge_ends(edge, True, qualified, where, errors)
+            _check_edge_ends(edge, True, seat_ids, where, errors)
             edges.append(edge)
 
-    tracker, review_rounds = _load_settings(rig_root, qualified, errors)
+    tracker, review_rounds = _load_settings(rig_root, seat_ids, errors)
     if not errors:
         errors.extend(_delegation_cycles(edges))
     if errors:

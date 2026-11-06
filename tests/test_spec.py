@@ -37,7 +37,7 @@ def test_loads_seats_and_edges(tmp_path: Path) -> None:
         extra=", edges: [{kind: delegates_to, from: a, to: b}]",
     )
     rig = load_rig(write_rig(tmp_path, body))
-    assert [s.qualified_id for s in rig.seats] == ["dev.a", "dev.b"]
+    assert [s.seat_id for s in rig.seats] == ["dev.a", "dev.b"]
     assert rig.session_name(rig.seats[0]) == "dev-a@r"
     assert rig.seats[0].cwd == tmp_path.resolve()
     assert rig.edges[0].source == "dev.a" and rig.edges[0].target == "dev.b"

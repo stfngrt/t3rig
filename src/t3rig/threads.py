@@ -292,13 +292,13 @@ def seat_thread(rig: Rig, t3: T3, seat: Seat) -> dict[str, Any]:
     """The seat's current thread, or a RigError saying to start it."""
     thread = next(s.thread for s in seat_threads(rig, t3) if s.seat == seat)
     if thread is None:
-        raise RigError(f"{seat.qualified_id} has {NO_THREAD}")
+        raise RigError(f"{seat.seat_id} has {NO_THREAD}")
     return thread
 
 
 def thread_ids(found: list[SeatThread]) -> dict[str, str]:
     """Seat id to current thread id, for the seats that have one."""
-    return {s.seat.qualified_id: s.thread["threadId"] for s in found if s.thread}
+    return {s.seat.seat_id: s.thread["threadId"] for s in found if s.thread}
 
 
 def all_seat_threads(rig: Rig, t3: T3, seats: list[Seat]) -> list[tuple[Seat, dict[str, Any]]]:
@@ -312,4 +312,4 @@ def earlier_thread(rig: Rig, t3: T3, seat: Seat, thread_id: str) -> None:
     title = t3.show_thread(thread_id, messages=0).get("thread", {}).get("title")
     name = rig.session_name(seat)
     if title != name:
-        raise RigError(f"thread {thread_id} is {title!r}, not {seat.qualified_id}'s {name!r}")
+        raise RigError(f"thread {thread_id} is {title!r}, not {seat.seat_id}'s {name!r}")

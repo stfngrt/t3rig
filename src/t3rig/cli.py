@@ -34,7 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     login_parser = commands.add_parser(
         "login",
-        help="Sign in to T3's /mcp, for permission modes, effort and down. "
+        help="Sign in to T3's /mcp, for runtime modes, effort and down. "
         "Seats can't be launched above this level.",
     )
     login_parser.add_argument("--access", required=True, choices=ACCESS_LEVELS)
@@ -210,9 +210,9 @@ def _send(rig: Rig, t3: T3, args: argparse.Namespace) -> int:
     results = send(rig, t3, seats, message, args.sender, args.raw, args.wait)
     for result in results:
         if result.error:
-            print(f"error: {result.seat.qualified_id}: {result.error}", file=sys.stderr)
+            print(f"error: {result.seat.seat_id}: {result.error}", file=sys.stderr)
         elif fan_out:
-            print(f"{result.seat.qualified_id}: {result.output.strip()}")
+            print(f"{result.seat.seat_id}: {result.output.strip()}")
         else:
             print(result.output, end="")
     return 1 if any(result.error for result in results) else 0

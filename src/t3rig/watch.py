@@ -135,7 +135,7 @@ def _check_seat(
     run = thread.get("latestRunId") if thread else None
     if thread is None or run is None:
         return [], {}
-    seat = status.seat.qualified_id
+    seat = status.seat.seat_id
     busy = is_busy(thread)
     first_seen = entry is None
     known: dict[str, Any] = entry or {"run": None, "asked": None}
@@ -178,7 +178,7 @@ def _check_seat(
 
     if not busy and run != known["run"]:
         if first_seen or details.get("runCount", 0) <= 1:
-            # History from before watching, or the seat's reply to its first message.
+            # History from before watching, or the seat's reply to its brief.
             updates["run"] = run
         else:
             # The newest message can be one sent to the seat, which isn't a reply.
@@ -340,7 +340,7 @@ class Watcher:
         statuses = seat_threads(self.rig, self.t3)
         by_dispatcher: dict[str, list[Event]] = {}
         for status in statuses:
-            dispatcher = self.dispatchers.get(status.seat.qualified_id)
+            dispatcher = self.dispatchers.get(status.seat.seat_id)
             entry = self.state["seats"].get(status.session_name)
             events, updates = _check_seat(
                 self.rig, status, entry, dispatcher, self.t3, self._waiting_on

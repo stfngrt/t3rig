@@ -1,4 +1,6 @@
+import fcntl
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -552,8 +554,29 @@ def test_ps_says_whether_watch_is_running(rig: Rig, capsys: pytest.CaptureFixtur
         _ps(rig, t3, as_json=True)
         status = json.loads(capsys.readouterr().out)
         assert status["watch_running"] is True and status["watch_last_check"] is None
+        assert status["watch_holder"] == f"t3rig watch (pid {os.getpid()})"
+        _ps(rig, t3, as_json=False)
+        last = capsys.readouterr().out.splitlines()[-1]
+        assert last == f"watch: running in t3rig watch (pid {os.getpid()}), has never run"
+
+
+def test_ps_says_running_when_an_older_t3rig_holds_the_lock_unnamed(
+    rig: Rig, capsys: pytest.CaptureFixture[str]
+) -> None:
+    t3 = fake_t3()
+    started(t3)
+    lock = state_path(rig).with_suffix(".lock")
+    lock.parent.mkdir(parents=True)
+    with open(lock, "w") as handle:  # As an older t3rig held it: locked, with nothing written.
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        _ps(rig, t3, as_json=True)
+        status = json.loads(capsys.readouterr().out)
+        assert status["watch_running"] is True and status["watch_holder"] is None
         _ps(rig, t3, as_json=False)
         assert capsys.readouterr().out.splitlines()[-1] == "watch: running, has never run"
+        with pytest.raises(RigError, match="another t3rig watch or serve is already running"):
+            with single_watcher(state_path(rig)):
+                pass
 
 
 def test_signature_with_a_thread_link_still_names_the_seat(rig: Rig) -> None:

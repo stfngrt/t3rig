@@ -203,3 +203,71 @@ def test_up_prints_notes_when_only_notes_remain_and_still_starts_seats(
     out = capsys.readouterr().out
     assert "extra.md is no longer in source, left in place" in out
     assert "No changes made" not in out and "dev.worker: started" in out
+
+
+@pytest.fixture
+def served(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
+    """Stands in for the web server: records each start, with what had started by then."""
+    calls: list[dict[str, Any]] = []
+
+    def run_uvicorn(app: Any, host: str, port: int, on_exit: Any) -> None:
+        started = list(RecordingT3.instances[-1].started) if RecordingT3.instances else []
+        calls.append({"host": host, "port": port, "started": started})
+
+    monkeypatch.setattr("t3rig.serve.run_uvicorn", run_uvicorn)
+    return calls
+
+
+def test_run_brings_the_rig_up_then_serves_it(
+    skills_rig: Path, served: list[dict[str, Any]], capsys: pytest.CaptureFixture[str]
+) -> None:
+    argv = ["run", str(skills_rig), "--yes", "--port", "9000", "--interval", "1"]
+    assert main(argv) == 0
+    # The seats were started before the server, which got the options.
+    assert served == [{"host": "127.0.0.1", "port": 9000, "started": ["dev-worker@skills"]}]
+    out = capsys.readouterr().out
+    assert out.index("dev.worker: started t1") < out.index("t3rig run: http://127.0.0.1:9000/")
+
+
+def test_run_serves_nothing_when_up_stops_for_yes(
+    skills_rig: Path, served: list[dict[str, Any]], capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["run", str(skills_rig)]) == 1
+    assert served == []
+    assert "Re-run with --yes" in capsys.readouterr().out
+
+
+def test_a_second_instance_is_refused_and_names_the_holder(
+    skills_rig: Path, served: list[dict[str, Any]], capsys: pytest.CaptureFixture[str]
+) -> None:
+    from t3rig.spec import load_rig
+    from t3rig.watch import single_watcher, state_path
+
+    rig = load_rig(skills_rig)
+    with single_watcher(state_path(rig), "t3rig run"):
+        for command in (["run", str(skills_rig), "--yes"], ["serve", str(skills_rig)]):
+            assert main(command) == 1
+            assert capsys.readouterr().err == (
+                f"error: another t3rig run (pid {os.getpid()}) is already running for this rig\n"
+            )
+    assert served == [] and RecordingT3.instances[0].started == []  # Refused before `up`.
+
+
+def test_ctrl_c_stops_serving_and_leaves_the_seats(
+    skills_rig: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from t3rig.spec import load_rig
+    from t3rig.threads import MemoryT3
+    from t3rig.watch import watch_running
+
+    t3 = MemoryT3(project_root=str(tmp_path))
+    monkeypatch.setattr("t3rig.cli.T3Code", lambda cli: t3)
+
+    def interrupted(app: Any, host: str, port: int, on_exit: Any) -> None:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("t3rig.serve.run_uvicorn", interrupted)
+    assert main(["run", str(skills_rig), "--yes"]) == 0
+    assert [s["title"] for s in t3.started] == ["dev-worker@skills"]
+    assert t3.actions == [] and t3.threads[0]["status"] == "running"  # No interrupt, no archive.
+    assert not watch_running(load_rig(skills_rig))  # The lock is free again.

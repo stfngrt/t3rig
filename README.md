@@ -4,8 +4,8 @@
 
 Run [OpenRig](https://github.com/mvschwarz/openrig)-compatible `rig.yaml` files on
 [T3 Code](https://t3.codes), with every seat as a T3 thread. There is no tmux and no daemon:
-`t3rig up` starts a thread per seat, `send`, `log` and `ps` talk to them, and `watch` pings a
-seat's dispatcher when work finishes.
+`t3rig run` starts a thread per seat and keeps the rig going, pinging a seat's dispatcher when work
+finishes and serving a status page; `send`, `log` and `ps` talk to the seats.
 
 Status: early, simple version. It has been run on a two-seat Claude rig.
 
@@ -25,9 +25,8 @@ uv run t3rig --version
 
 ```sh
 uv run t3rig validate examples/two-seat/rig.yaml   # check the spec; starts nothing
-uv run t3rig up examples/two-seat/rig.yaml         # start a thread per seat; safe to re-run
-uv run t3rig send examples/two-seat/rig.yaml dev.impl "Hello"
-uv run t3rig watch examples/two-seat/rig.yaml      # ping dispatchers when seats finish
+uv run t3rig run examples/two-seat/rig.yaml        # start the seats and keep them going
+uv run t3rig send examples/two-seat/rig.yaml dev.impl "Hello"   # in another terminal
 ```
 
 ## Docs

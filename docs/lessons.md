@@ -128,3 +128,8 @@ none recorded (it predates the rule)
   the real adapter; when an adapter skips a side effect, write down which ones.
 - The issue's table said "a failed run", but only three things were ALERTs. Check an event list
   against what the code actually raises, not what its docs say.
+
+## 2026-11-07: [#21](https://github.com/stfngrt/t3rig/issues/21) `t3rig run`
+
+- The live `watch` was older code that writes no lock record, which the first `ps` change read as
+  "not running". When a file format gains a field, check how a running older version's file reads.

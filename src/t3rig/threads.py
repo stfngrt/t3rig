@@ -15,6 +15,16 @@ from t3rig.mcp import McpClient, load_credential
 from t3rig.spec import Rig, Seat
 from t3rig.t3 import T3Cli, T3Error
 
+# Fields `t3 thread show` gives that `t3 thread list` doesn't (checked against t3's --json output).
+SHOW_ONLY = {
+    "activeRunId",
+    "archived",
+    "branch",
+    "pendingRequestCount",
+    "runCount",
+    "titleRegeneration",
+    "worktreePath",
+}
 BUSY_STATUSES = {"preparing", "queued", "starting", "running", "waiting"}
 NO_THREAD = "no thread; run `t3rig up` first"
 
@@ -186,7 +196,9 @@ class MemoryT3:
         raise T3Error(f"`thread show` exited 1: Thread {thread_id} is no longer available.")
 
     def list_threads(self, project: str) -> list[dict[str, Any]]:
-        return list(self.threads)
+        # Keep list and show apart as real T3 does, so a caller that needs a show-only field
+        # can't pass a test without asking for it.
+        return [{k: v for k, v in t.items() if k not in SHOW_ONLY} for t in self.threads]
 
     def show_thread(self, thread_id: str, messages: int = 1) -> dict[str, Any]:
         self.read.append(thread_id)
@@ -212,6 +224,8 @@ class MemoryT3:
     def send(self, thread_id: str, message: str, wait: bool = False) -> str:
         if self.send_error:
             raise self.send_error
+        if not any(t["threadId"] == thread_id for t in self.threads):
+            raise T3Error(f"`thread send` exited 1: Thread {thread_id} is no longer available.")
         self.sent.append((thread_id, message, wait))
         return "Sent."
 

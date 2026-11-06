@@ -1,4 +1,4 @@
-<img src="assets/icon.svg" width="64" height="64" alt="">
+<img src="https://raw.githubusercontent.com/stfngrt/t3rig/main/assets/icon.svg" width="64" height="64" alt="">
 
 # t3rig
 
@@ -20,6 +20,8 @@ git clone https://github.com/stfngrt/t3rig
 cd t3rig
 uv run t3rig --version
 ```
+
+Once t3rig is on PyPI, `uv tool install 't3rig[serve]'` will install it as a command instead.
 
 ## Quick start
 
@@ -47,7 +49,7 @@ uv run t3rig send examples/two-seat/rig.yaml dev.impl "Hello"   # in another ter
 `rigs/self` develops t3rig with t3rig. Its seats, and anyone changing the code, should read these
 in the repo:
 
-- [`docs/development.md`](docs/development.md): the checks to run, the docs build, and how the self
+- [`docs/development.md`](https://github.com/stfngrt/t3rig/blob/main/docs/development.md): the checks to run, the docs build, and how the self
   rig works
-- [`docs/glossary.md`](docs/glossary.md): the project's terms
-- [`docs/adr/`](docs/adr/index.md): decisions already made
+- [`docs/glossary.md`](https://github.com/stfngrt/t3rig/blob/main/docs/glossary.md): the project's terms
+- [`docs/adr/`](https://github.com/stfngrt/t3rig/blob/main/docs/adr/index.md): decisions already made

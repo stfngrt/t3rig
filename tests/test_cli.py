@@ -1,5 +1,6 @@
 import os
 import shutil
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -271,3 +272,13 @@ def test_ctrl_c_stops_serving_and_leaves_the_seats(
     assert [s["title"] for s in t3.started] == ["dev-worker@skills"]
     assert t3.actions == [] and t3.threads[0]["status"] == "running"  # No interrupt, no archive.
     assert not watch_running(load_rig(skills_rig))  # The lock is free again.
+
+
+def test_serve_without_the_serve_extra_says_how_to_install_it(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setitem(sys.modules, "t3rig.serve", None)  # As if fastapi weren't installed.
+    assert main(["serve", str(EXAMPLE)]) == 1
+    err = capsys.readouterr().err
+    assert err.startswith("error: serve needs the serve extra")
+    assert err.rstrip().endswith("run `uv sync --extra serve` in the t3rig checkout")

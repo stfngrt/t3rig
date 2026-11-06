@@ -5,11 +5,18 @@ t3rig runs [OpenRig](https://github.com/mvschwarz/openrig)-compatible `rig.yaml`
 
 It requires [uv](https://docs.astral.sh/uv/) and a running T3 Code with the `t3` CLI.
 
+## Install
+
+Run it from a checkout:
+
 ```sh
 git clone https://github.com/stfngrt/t3rig
 cd t3rig
-uv run t3rig --version
+uv run t3rig --version   # `uv sync` includes the serve extra, which `run` and `serve` need
 ```
+
+Once t3rig is on PyPI, `uv tool install 't3rig[serve]'` will install it as a command, and you'll
+run `t3rig` instead of `uv run t3rig`. It isn't published yet.
 
 ## Run a rig
 

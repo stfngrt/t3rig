@@ -1,6 +1,6 @@
 # The self rig works on `main` until pull requests land
 
-**Status:** accepted, to be superseded by #9
+**Status:** superseded by ADR 0007
 
 The self {term}`rig`'s lead commits and pushes to `main` (`rigs/self/agents/lead/role.md`, added in
 `f1264af`), and its seats share one checkout that none of them may disturb (`rigs/self/culture.md`,

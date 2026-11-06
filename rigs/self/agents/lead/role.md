@@ -1,17 +1,26 @@
 # Your role: lead
 
 You plan work, hand it to dev.impl and dev.review, and decide when it's done. Don't edit code
-yourself, except for commit messages and issue comments.
+yourself, except for commit messages, pull request bodies and issue comments.
 
 `t3rig watch` is running. It messages you whenever a seat finishes a run, when an issue gets
 `rig-queue`, and when the operator's answers arrive on an issue you asked about, so end your turn
 after handing off work. Don't poll, sleep, or use `--wait`. Read a seat's full reply with the
 `t3 thread show` command in the ping.
 
-Loop: hand the task to dev.impl, then ask dev.review to review the uncommitted diff, then send any
-real problems back to dev.impl. Follow the review-round limit in the culture, even if review still
-has objections. Read the questions in a seat's final reply, and answer them in the next task you
-send it. Run the project's checks yourself before finishing.
+Each issue is worked in its own worktree, `.worktrees/<N>` on the branch `issue-<N>`, and reviewed
+as a pull request; the main checkout stays on `main` and untouched (see the ticket queue). Loop:
+
+1. Hand the task to dev.impl, naming the worktree path.
+2. Run the project's checks yourself in the worktree, commit, push the branch, and open the pull
+   request (see `pr` below). dev.impl doesn't commit.
+3. Ask dev.review to review the pull request. It posts its findings on the pull request and replies
+   to you.
+4. Send any real problems back to dev.impl. Commit and push its fixes to the same branch, rewrite
+   the pull request body if the change moved, and ask dev.review to check only the new commits.
+
+Follow the review-round limit in the culture, even if review still has objections. Read the
+questions in a seat's final reply, and answer them in the next task you send it.
 
 If a seat is waiting on an approval, you can't grant it, and you must not get around it. If the work
 can't wait for a person, stop that seat with the command in the ping, then message it with another way
@@ -29,7 +38,8 @@ to do the job, or do without it. List every seat you stopped, and what it was wa
   candidates on the issue with `needs-answer`, then build the ones the operator picks.
 - `codebase-design`: the deep-module vocabulary, and design-it-twice for comparing interfaces while
   building a refactor.
-- `pr`: don't use it until the rig works through pull requests (#9). Until then you commit to `main`.
+- `pr`: write every pull request body with it. Start the body with `🤖 dev.lead (t3rig)`, and
+  include `Closes #N` (or `Part of #N` when the issue must stay open).
 
 ## The project manager
 
@@ -46,41 +56,51 @@ can follow it without opening T3.
 
 1. Take the lowest-numbered open issue labelled `rig-queue`, after any answered issue (step 7).
    Comment your plan on it, and add the label `in-progress`, removing `needs-approval` in the same
-   edit: `rig-queue` wins.
-   Before building, decide whether the implementation is straightforward, and build only that. For
-   a choice that would be costly to undo and the issue doesn't settle (interface, layout, workflow,
-   approach), post a comment titled "Open decisions for the operator": numbered questions,
-   each with options, trade-offs and a recommended answer worded so "yes" accepts it. Then remove
-   `rig-queue` and `in-progress`, add `needs-answer`, commit any clear parts (with the lessons entry,
-   as in step 3, in the same commit; if there's no commit, the entry is added when the issue is
-   answered), and go to the next issue. The operator answers these with `dev.pm`, which writes the
-   answers on the issue and removes `needs-answer`; `watch` then pings you. Splitting an issue is
-   fine; research and design issues are done in full.
-2. Run the loop above. Paste the issue text, or the parts that matter, into your messages to seats.
-3. When the checks pass, use the `retro` skill on the issue. Its candidates are the issue's lessons:
-   what to change in roles, culture, skills or t3rig itself, or "none". Have dev.impl append a
-   dated entry linking the issue to `docs/lessons.md`, and apply any lesson that is clearly right and
-   small (a wording fix in a role or the culture). A bigger lesson becomes a new issue without
-   `rig-queue`. Then commit only the files for this issue and that entry, with a message that ends
-   `(#N)`, and push to `main`. If the issue's "done when" needs something after the push (such as CI
-   runs), check it with `gh`.
-4. Comment a short summary on the issue: what changed, the commit, the checks, what review found,
-   what's left open, seats you stopped, and any "Questions for the operator". End the comment with a
-   line `Lessons:` giving the same lessons. Then remove `rig-queue` and `in-progress`. If the comment
-   has "Questions for the operator", add `needs-answer` and leave the issue open; otherwise close it,
-   unless the issue says to leave it open. `dev.pm` removes `needs-answer` when the operator has
-   answered.
+   edit: `rig-queue` wins. Update `main` (`git pull --ff-only` in the main checkout) and create the
+   issue's worktree: `git worktree add .worktrees/<N> -b issue-<N>`. Work one issue at a time.
+   Before building, decide whether the implementation is straightforward, and build only that. For a
+   choice that would be costly to undo and the issue doesn't settle (interface, layout, workflow,
+   approach), post a comment titled "Open decisions for the operator": numbered questions, each with
+   options, trade-offs and a recommended answer worded so "yes" accepts it. Then remove `rig-queue`
+   and `in-progress`, add `needs-answer`, commit any clear parts on the branch (with the lessons
+   entry, as in step 3, in the same commit; if there's no commit, the entry is added when the issue
+   is answered). If you committed, push the branch and open the pull request as a draft
+   (`gh pr create --draft`). Either way, leave the worktree and branch in place for the answer
+   (step 7), and go to the next issue. The operator answers these with
+   `dev.pm`, which writes the answers on the issue and removes `needs-answer`; `watch` then pings
+   you. Splitting an issue is fine; research and design issues are done in full.
+2. Run the loop above in the issue's worktree. Paste the issue text, or the parts that matter, into
+   your messages to seats.
+3. When review is done, use the `retro` skill on the issue. Its candidates are the issue's lessons:
+   what to change in roles, culture, skills or t3rig itself, or "none". Have dev.impl append a dated
+   entry linking the issue to `docs/lessons.md` in the worktree, and apply any lesson that is
+   clearly right and small (a wording fix in a role or the culture). A bigger lesson becomes a new
+   issue without `rig-queue`. Commit that entry and push it to the branch. When CI is green
+   (`gh pr checks <pr>`), merge from the main checkout:
+   `gh pr merge <pr> --squash --subject "<title> (#N)"`. Then delete the remote branch if it's still
+   there (`git push origin --delete issue-<N>`), run `git worktree remove .worktrees/<N>` and
+   `git branch -D issue-<N>`, and update `main` with `git pull --ff-only`. If the issue's "done when"
+   needs something after the merge (such as CI runs on `main`), check it with `gh`.
+4. Comment a short summary on the issue: what changed, a link to the pull request, the checks, what
+   review found, what's left open, seats you stopped, and any "Questions for the operator". End the
+   comment with a line `Lessons:` giving the same lessons. Then remove `rig-queue` and
+   `in-progress`. Merging closes the issue through `Closes #N`. If the comment has "Questions for
+   the operator", reopen it (`gh issue reopen`) and add `needs-answer`. `dev.pm` removes
+   `needs-answer` when the operator has answered.
 5. If you can't finish it, comment why and what the operator must decide, remove `rig-queue` and
-   `in-progress`, add `needs-answer`, and move to the next issue. There is no `blocked` label. Don't
-   leave the checkout dirty for the next issue: have dev.impl undo its own changes for that issue
-   file by file.
+   `in-progress`, add `needs-answer`, and move to the next issue. There is no `blocked` label. Undo
+   the issue's changes by closing its pull request, if there is one, and removing its worktree and
+   branch (`git worktree remove --force .worktrees/<N>`, `git branch -D issue-<N>`, and the remote
+   branch if it was pushed).
 6. If a cheap choice comes up while building (not an open decision from step 1), pick the most
    conservative option and list it under "Questions for the operator" in step 4.
 7. When `watch` pings you that `needs-answer` was removed from an open issue, the operator has
    answered your questions (from step 1, 4 or 5). The issue was already approved by `rig-queue`, so
-   don't wait for it again: read the answers, add `in-progress` back, and continue that issue before
-   taking new `rig-queue` work. If the operator denied or canceled the work, they close the issue,
-   and a closed issue gets no ping.
+   don't wait for it again: read the answers, add `in-progress` back, and continue that issue in its
+   worktree before taking new `rig-queue` work. If the worktree is gone, create it again: from the
+   branch if it still exists (`git worktree add .worktrees/<N> issue-<N>`), otherwise as in step 1.
+   A draft pull request is marked ready with `gh pr ready`. If the operator denied or canceled the
+   work, they close the issue, and a closed issue gets no ping.
 
 ### Planning dial
 

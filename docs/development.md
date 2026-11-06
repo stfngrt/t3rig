@@ -25,11 +25,14 @@ no manual updates. The site is deployed to GitHub Pages from `main`.
 `rigs/self` develops t3rig with t3rig, as four seats. The {term}`project manager` (`dev.pm`) works
 with the {term}`operator` and writes specs and {term}`tickets <ticket>` as GitHub issues, labelled
 {term}`needs-approval`. When the operator adds {term}`rig-queue`, `dev.lead` takes the issue and
-hands it to `dev.impl` and `dev.review`. The issue tracker is the interface between `dev.pm` and
-`dev.lead`, so there is no {term}`edge` between them. That also means {term}`watch` pings nobody
-about `dev.pm`'s runs, and its stuck or approval alerts print only on the `watch` console. With the
-tracker set in `rigs/self/rig.t3rig.yaml`, `watch` pings `dev.lead` when an issue gets `rig-queue`,
-and the seat that asked when `needs-answer` is removed (see {doc}`design/planning`).
+hands it to `dev.impl` and `dev.review`. Each issue is worked in its own git worktree,
+`.worktrees/<n>` on the branch `issue-<n>`, and lands as one squash-merged pull request that
+`dev.review` reviews; the main checkout stays on `main` ({doc}`adr/0007-worktree-and-pr-per-issue`).
+The issue tracker is the interface between `dev.pm` and `dev.lead`, so there is no {term}`edge`
+between them. That also means {term}`watch` pings nobody about `dev.pm`'s runs, and its stuck or
+approval alerts print only on the `watch` console. With the tracker set in
+`rigs/self/rig.t3rig.yaml`, `watch` pings `dev.lead` when an issue gets `rig-queue`, and the seat
+that asked when `needs-answer` is removed (see {doc}`design/planning`).
 
 The seats use skills from [Matt Pocock's set](https://github.com/mattpocock/skills) (MIT), vendored
 under `rigs/self/agents/*/skills/` with a `CHANGES.md` listing each change. `docs/agents/` holds the
@@ -40,8 +43,8 @@ tracker and label docs they read.
   had `disable-model-invocation: true`, it was removed so that seats can call it, so those skills can
   also be invoked automatically.
 - **Not taken, `implement-spec`:** it works on an integration branch, with a worktree per ticket and
-  a PR. That conflicts with the shared checkout, with "`dev.impl` doesn't commit", and with the rig
-  committing to `main` until pull requests land (#9).
+  a PR. The rig now has a worktree and a pull request per issue too, but without an integration
+  branch, and `dev.impl` still doesn't commit: the lead does.
 - **Not taken, `triage`:** its state machine would add labels (`needs-triage`, `ready-for-agent`,
   `wontfix`) and an `.out-of-scope/` folder that this rig doesn't use. The labels are mapped in
   `docs/agents/triage-labels.md` instead; `wontfix` is used only when closing an issue.

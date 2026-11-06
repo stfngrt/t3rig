@@ -81,3 +81,10 @@ none recorded (it predates the rule)
 
 - Cutting the README broke 15 citations to its sections in ADRs and design docs. Cite docs pages,
   not README sections, since the README is now only an intro.
+
+## 2026-11-06: [#9](https://github.com/stfngrt/t3rig/issues/9) Worktree and pull request per issue
+
+- Review tried every `gh` and `git` command the roles name in a throwaway repo, and found the draft
+  pull request step fails when nothing is committed. Workflow text with commands gets the same check.
+- The docs build ran only after a merge to `main`, so pull requests could merge with a broken `-W`
+  build. Applied: the docs workflow builds on pull requests too.

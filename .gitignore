@@ -7,3 +7,4 @@ dist/
 examples/skills/.claude/
 examples/skills/.agents/
 docs/_build/
+.worktrees/

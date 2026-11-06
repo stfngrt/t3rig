@@ -41,7 +41,23 @@ only approval), `dev.lead` adds `in-progress` when it takes a `rig-queue` issue,
 
 ## Pull requests
 
-This rig commits to `main` and doesn't use pull requests yet (#9). **PRs as a request surface: no.**
+Each issue is worked in its own worktree, `.worktrees/<n>` on the branch `issue-<n>`, and lands
+through one pull request (see `docs/adr/0007-worktree-and-pr-per-issue.md`). **PRs as a request
+surface: no**: work still starts from an issue labelled `rig-queue`, never from a pull request.
+
+- **Worktree** (dev.lead, from an up-to-date `main`):
+  `git worktree add .worktrees/<n> -b issue-<n>`.
+- **Open** (dev.lead): `gh pr create --head issue-<n> --title "..." --body "..."`, the body written
+  with the `pr` skill, starting with the seat line and containing `Closes #<n>`. Add `--draft` for
+  partial work waiting on `needs-answer`; `gh pr ready <pr>` undrafts it.
+- **Read the diff** (dev.review): `gh pr diff <pr>`, plus the files in the worktree.
+- **Review** (dev.review): `gh pr review <pr> --comment --body "..."`. The shared account can't
+  approve its own pull request, so reviews are comments.
+- **CI**: `gh pr checks <pr>`.
+- **Merge** (dev.lead, from the main checkout):
+  `gh pr merge <pr> --squash --subject "<title> (#<n>)"`, then
+  `git push origin --delete issue-<n>` if the branch is still there,
+  `git worktree remove .worktrees/<n>`, `git branch -D issue-<n>` and `git pull --ff-only`.
 
 ## When a skill says "publish to the issue tracker"
 

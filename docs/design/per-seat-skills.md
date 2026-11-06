@@ -118,7 +118,7 @@ Claude shape without per-thread env.
 | Option | Isolates from other seats and the operator | Reachable in T3 | Native skill loading | Cost and catches |
 |---|---|---|---|---|
 | **A. Shared install** (today) | No | Yes | Yes, both | The problem |
-| **B. Invocation policy in the skill** (Claude `disable-model-invocation: true`; Codex `allow_implicit_invocation: false`) | Partly: the description leaves other sessions' context, and the skill stays on disk for everyone | Yes | Claude: only a person typing `/name` runs it, and Claude Code blocks the model's own attempt [^cc-skills]. Codex: explicit `$skill` still works [^codex-skills] | It hides the skill from the seat that needs it too, so the seat can't use it on its own; the first message would have to carry `/name` or `$name`, and whether T3 passes that through as a command is *unverified*. A local patch to a vendored skill (`ponytail` is vendored at a pinned commit) |
+| **B. Invocation policy in the skill** (Claude `disable-model-invocation: true`; Codex `allow_implicit_invocation: false`) | Partly: the description leaves other sessions' context, and the skill stays on disk for everyone | Yes | Claude: only a person typing `/name` runs it, and Claude Code blocks the model's own attempt [^cc-skills]. Codex: explicit `$skill` still works [^codex-skills] | It hides the skill from the seat that needs it too, so the seat can't use it on its own; the brief would have to carry `/name` or `$name`, and whether T3 passes that through as a command is *unverified*. A local patch to a vendored skill (`ponytail` is vendored at a pinned commit) |
 | **C. Gitignored seat folder inside the project**, e.g. `.t3rig/seats/<rig>/<seat>/skills/<id>/`, a name no harness scans, pointed to in the brief | Yes for discovery: Claude and Codex don't scan it | Yes | No: read as files, not re-injected after compaction | An in-repo read should need no approval, unlike an outside-repo one (`rigs/self/culture.md`), but that is *unverified* and phase 1 tests it; no `~/.local/state` dependency for the files; shows as untracked in `git status` until the operator adds it to `.gitignore` (t3rig doesn't edit it); other seats can still read the files |
 | **D. The same folder outside the project** (fallback), e.g. `~/.local/state/t3rig/seats/<rig>/<seat>/` | Yes for discovery | Yes | No, as C | Restricted seats stop for approval on outside-repo reads (`rigs/self/culture.md`); `additionalDirectories` may grant read access [^cc-skills], *unverified*; mirrors OpenRig's Codex path |
 | **E. Per-seat worktree** with the skills installed in it | Yes: other checkouts never see them | Yes: `existing_worktree` (*lead*) | Yes, both | Breaks the shared-checkout rule; see below |
@@ -189,7 +189,7 @@ Each phase is its own issue, in this order.
    (`approval-required`, `auto-accept-edits`, `auto`), test whether a seat can read a file under
    `.t3rig/` inside the project, and one outside it, without prompting; whether
    `permissions.additionalDirectories` fixes the outside case; whether a seat follows a catalog
-   pointer in its first message; and whether `/name` or `$name` in a first message runs a skill
+   pointer in its brief; and whether `/name` or `$name` in a brief runs a skill
    (this settles option B). This decides C versus D, so it comes before any build.
 2. **Seat folder and brief (C), Claude and Codex.** Size M. Write skills to
    `<T3 project root>/.t3rig/seats/<rig>/<seat>/skills/<id>/`, keyed by rig and seat, never by
@@ -201,7 +201,7 @@ Each phase is its own issue, in this order.
      file, `rig.t3rig.yaml` (settled in #15, see `planning.md`). It is not a separate file for
      this.
    - **Compaction:** depends on #5's `t3rig refocus` recommendation being approved first, because
-     the catalog in the first message is summarised at compaction.
+     the catalog in the brief is summarised at compaction.
 3. **Old-copy cleanup and docs for the seat folder.** Size S. t3rig never deletes, so the old shared
    copies under `.claude/skills/<id>/` and `.agents/skills/<id>/` stay.
    - **Cleanup:** `up` lists those its record shows it wrote and that are unchanged, with a `rm -r`
@@ -224,7 +224,7 @@ Each phase is its own issue, in this order.
   worktree path, inside or outside the project ({doc}`/limits` says the project root).
 - Whether `auto` mode prompts for reads outside the repo, and whether `additionalDirectories`
   grants them without a prompt.
-- Whether a `/name` or `$name` at the start of a first message runs the skill through T3.
+- Whether a `/name` or `$name` at the start of a brief runs the skill through T3.
 - Whether `-c` can set `skills.config` per thread in Codex.
 - Which harnesses follow the Agent Skills spec beyond Claude Code and Codex.
 - Whether a skill in a nested subfolder is found by a Codex session that `cd`s there after launch.

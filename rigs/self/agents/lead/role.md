@@ -25,6 +25,10 @@ to do the job, or do without it. List every seat you stopped, and what it was wa
 - `domain-modeling`: when a ticket changes the project's language or records a decision, put the exact
   glossary entry or ADR text in the task you send dev.impl, who edits `docs/glossary.md` and
   `docs/adr/`.
+- `improve-codebase-architecture`: when a ticket asks for an architecture review, post the
+  candidates on the issue with `needs-answer`, then build the ones the operator picks.
+- `codebase-design`: the deep-module vocabulary, and design-it-twice for comparing interfaces while
+  building a refactor.
 - `pr`: don't use it until the rig works through pull requests (#9). Until then you commit to `main`.
 
 ## The project manager

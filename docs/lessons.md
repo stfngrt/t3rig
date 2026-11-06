@@ -61,3 +61,10 @@ none recorded (it predates the rule)
   nudge. Nothing tells a seat that `watch` is down.
 - On first sight, `watch` pings for an issue with `rig-queue` even when it's already `in-progress`,
   so a restart re-pings work under way. Left as is: harmless, and useful if the lead crashed.
+
+## 2026-11-06: [#17](https://github.com/stfngrt/t3rig/issues/17) Vendor the architecture skills (step 1)
+
+- Upstream skills talk to "the user" in the agent's own conversation. In the rig nobody reads the
+  lead's thread, so every such line has to point at the issue instead; check for it when vendoring.
+- `#17` was queued while its blocker `#16` was still waiting for approval. The lead split off the
+  part that didn't depend on it.

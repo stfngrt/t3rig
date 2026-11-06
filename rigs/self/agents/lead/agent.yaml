@@ -19,7 +19,11 @@ resources:
       path: skills/retro
     - id: domain-modeling
       path: skills/domain-modeling
+    - id: improve-codebase-architecture
+      path: skills/improve-codebase-architecture
+    - id: codebase-design
+      path: skills/codebase-design
 profiles:
   default:
     uses:
-      skills: [handoff, pr, retro, domain-modeling]
+      skills: [handoff, pr, retro, domain-modeling, improve-codebase-architecture, codebase-design]

@@ -256,6 +256,7 @@ def test_usage_limit_says_so_and_alerts_a_person(rig: Rig) -> None:
 
 
 def test_ordinary_failure_and_limit_talk_in_a_good_run_are_not_usage_limits(rig: Rig) -> None:
+    # A failed run is still an ALERT (see below), but not a usage limit.
     t3 = fake_t3()
     started(t3)
     watcher, lines = make_watcher(rig, t3)
@@ -268,7 +269,11 @@ def test_ordinary_failure_and_limit_talk_in_a_good_run_are_not_usage_limits(rig:
     put(t3, QA, 2)
     watcher.tick()
     assert "dev.qa finished a run (completed)" in t3.sent[1][1]
-    assert not any(line.startswith("ALERT") for line in lines)
+    assert not any("usage limit" in line for line in lines)
+    assert [line for line in lines if line.startswith("ALERT")] == [
+        f'ALERT: dev.impl finished a run (failed). Last reply: "tests failed" Thread id-{IMPL}: '
+        f"http://t3/{IMPL}"
+    ]
 
 
 def test_needs_input_ping_names_the_command_and_how_to_stop(rig: Rig) -> None:
@@ -335,6 +340,8 @@ def test_message_sent_to_a_seat_is_not_shown_as_its_reply(rig: Rig) -> None:
 
 
 class FakeTracker:
+    limit = 1000
+
     def __init__(self) -> None:
         self.labels: dict[int, set[str]] = {}
         self.notes: dict[int, list[str]] = {}
@@ -689,3 +696,62 @@ def test_no_notify_seat_means_no_notices(rig: Rig) -> None:
     del tracker.labels[5]
     watcher.poll_tracker()
     assert notices(t3) == [] and "notices" not in watcher.state
+
+
+def test_a_failed_run_and_a_pending_request_are_alerts_noticed_once(rig: Rig) -> None:
+    watcher, t3, _ = noticed(rig)
+    lines: list[str] = []
+    watcher.delivery.out = lines.append
+    watcher.tick()
+    put(t3, IMPL, 2, status="failed")
+    put(t3, LEAD, 2, status="running", pending=1)  # Has no dispatcher in this rig, as before.
+    watcher.tick()
+    watcher.tick()
+    assert sum(line.startswith("ALERT: dev.impl finished a run (failed)") for line in lines) == 1
+    # The dispatcher still gets its ping about the failed run.
+    assert any(
+        to == f"id-{LEAD}" and "dev.impl finished a run (failed)" in m for to, m, _ in t3.sent
+    )
+    alerts = notices(t3)
+    assert len(alerts) == 2 and all(line.startswith("- ALERT: ") for line in alerts)
+    assert any("dev.impl finished a run (failed)" in a for a in alerts)
+    assert any("dev.lead needs input" in a for a in alerts)
+
+
+def test_a_pending_request_with_a_dispatcher_is_an_alert_too(rig: Rig) -> None:
+    t3 = fake_t3()
+    started(t3)
+    watcher, lines = make_watcher(rig, t3)
+    watcher.tick()
+    put(t3, IMPL, 2, status="running", pending=1)
+    watcher.tick()
+    assert "dev.impl needs input" in t3.sent[0][1]  # The dispatcher's ping, as before.
+    assert lines[0].startswith("ALERT: dev.impl needs input")
+
+
+def test_alerts_about_the_notify_seat_are_never_noticed(rig: Rig) -> None:
+    watcher, t3, _ = noticed(rig)
+    lines: list[str] = []
+    watcher.delivery.out = lines.append
+    watcher.tick()
+    # In real T3 each notice starts a run, which stops at the usage limit again: a new run id.
+    for run in range(2, 6):
+        t3.say(f"id-{QA}", "You've hit your 5-hour limit · resets 5:50pm")
+        put(t3, QA, run, status="failed")
+        watcher.tick()
+    assert sum(line.startswith("ALERT: dev.qa stopped at a usage limit") for line in lines) == 4
+    assert notices(t3) == []
+
+
+def test_a_capped_tracker_list_closes_nothing(rig: Rig) -> None:
+    watcher, t3, tracker = noticed(rig)
+    lines: list[str] = []
+    watcher.delivery.out = lines.append
+    tracker.labels.update({5: {"rig-queue", "in-progress"}, 6: set()})
+    watcher.poll_tracker()
+    tracker.limit = 1  # Now the list is cut off at one issue, and #5 falls off it.
+    del tracker.labels[5]
+    watcher.poll_tracker()
+    assert notices(t3) == []
+    assert "5" in watcher.state["issues"]
+    assert lines[-1].startswith("the tracker's list stopped at its limit of 1 open issues")

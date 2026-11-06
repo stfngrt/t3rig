@@ -24,6 +24,8 @@ class Issue:
 
 
 class Tracker(Protocol):
+    limit: int  # The most open issues `open_issues` returns.
+
     def open_issues(self) -> list[Issue]: ...
     def comments(self, number: int) -> list[str]: ...  # Bodies, oldest first.
 
@@ -47,13 +49,25 @@ def _run_json(command: list[str]) -> Any:
 
 
 class GitHub:
+    limit = 1000
+
     def __init__(self, repo: str) -> None:
         self.repo = repo
 
     def open_issues(self) -> list[Issue]:
         # shortcut: at most 1000 open issues are seen; page with `gh api` if a repo has more.
         rows = _run_json(
-            ["gh", "issue", "list", "--repo", self.repo, "--state", "open", "--limit", "1000"]
+            [
+                "gh",
+                "issue",
+                "list",
+                "--repo",
+                self.repo,
+                "--state",
+                "open",
+                "--limit",
+                str(self.limit),
+            ]
             + ["--json", "number,title,url,labels"]
         )
         return [
@@ -74,13 +88,16 @@ class GitHub:
 
 
 class GitLab:
+    limit = 100
+
     def __init__(self, repo: str) -> None:
         self.repo = repo
 
     def open_issues(self) -> list[Issue]:
         # shortcut: only the first 100 open issues are seen; page if a project has more.
         rows = _run_json(
-            ["glab", "issue", "list", "--repo", self.repo, "--per-page", "100", "--output", "json"]
+            ["glab", "issue", "list", "--repo", self.repo]
+            + ["--per-page", str(self.limit), "--output", "json"]
         )
         return [
             Issue(row["iid"], row["web_url"], frozenset(row["labels"]), row["title"])

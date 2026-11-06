@@ -152,7 +152,11 @@ class T3Code:
 
 @dataclass
 class MemoryT3:
-    """The in-memory adapter: threads, messages and what was sent, with no T3 running."""
+    """The in-memory adapter: threads, messages and what was sent, with no T3 running.
+
+    Side effects of real T3 it skips: a send doesn't start a run or change the thread's status,
+    and nothing runs on its own. Tests that depend on those set the thread with `put`.
+    """
 
     provider: str = "claudeAgent"
     project_root: str = "/"

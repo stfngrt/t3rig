@@ -34,9 +34,13 @@ changes labels or writes comments.
 
 ## Failures and alerts
 
-- A failed ping is retried on the next check, and prints an `ALERT` after three failures. A
-  {term}`stuck seat` with no dispatcher also prints one, and so does a seat stopped at a usage
-  limit, which `watch` recognizes from the wording of its last reply.
+- A failed ping is retried on the next check, and prints an `ALERT` after three failures.
+- `watch` also prints an `ALERT` when a person is needed:
+  - a {term}`stuck seat` waiting on an approval or question in T3, which only a person can answer,
+    even when its dispatcher is pinged about it too;
+  - a seat stopped at a usage limit, which `watch` recognizes from the wording of its last reply;
+  - a seat's run that ended `failed`. Its dispatcher still gets the usual ping.
+- In `serve`, a round of the watch loop that fails unexpectedly prints one too.
 
 ## Notices
 
@@ -47,11 +51,15 @@ are three kinds:
 - **A question:** an open issue gains {term}`needs-answer` and the question's `🤖 <seat>` signature
   isn't the notify seat's own: `#24 needs you: questions from dev.lead <URL>`. Labels already set
   on the first tracker check of a rig aren't announced.
-- **An `ALERT`:** every alert above, such as a stuck seat, a seat at a usage limit, or a ping that
-  keeps failing: `ALERT: <what>`. An alert that repeats each check is noticed once.
+- **An `ALERT`:** every alert above: a ping that keeps failing, a stuck seat, a seat at a usage
+  limit, a failed run, or a failed `serve` round: `ALERT: <what>`. An alert that repeats each check
+  is noticed once. An alert about the notify seat itself is only printed, because each notice to it
+  would start a new run that could raise the alert again.
 - **A close:** an issue `watch` was tracking leaves the open list: `#24 closed: <title> <URL>`.
   The rig and the operator share one GitHub account, so every close counts, not only the rig's. An
-  issue `watch` never saw open isn't announced.
+  issue `watch` never saw open isn't announced, and neither is any close when the tracker's list
+  stopped at its limit (1000 open issues for GitHub, 100 for GitLab), since an issue missing from a
+  cut-off list may still be open.
 
 Each notice is sent once and never repeated as a reminder. One that can't be delivered is retried
 on the next check, like a ping, and the notices waiting to go out survive a restart. A notice that

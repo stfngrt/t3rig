@@ -120,3 +120,11 @@ none recorded (it predates the rule)
   on the host.
 - The page showed the queue by number after #18 moved the lead to board order. A change to how
   work is picked needs every view of the queue checked.
+
+## 2026-11-06: [#22](https://github.com/stfngrt/t3rig/issues/22) Notices to dev.pm
+
+- The in-memory T3 doesn't start a run on send, so tests couldn't show a notice loop that real T3
+  would cause (an alert about the notify seat, noticed to itself). Review found it by reasoning about
+  the real adapter; when an adapter skips a side effect, write down which ones.
+- The issue's table said "a failed run", but only three things were ALERTs. Check an event list
+  against what the code actually raises, not what its docs say.

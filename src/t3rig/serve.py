@@ -228,7 +228,10 @@ class RigServer:
                     await asyncio.to_thread(self.watcher.step)
                 await asyncio.to_thread(self.refresh)
             except Exception as error:  # A dead loop would leave the page up but nothing pinged.
-                self.log(f"ALERT: watch round failed, will retry: {error!r}", "error")
+                text = f"ALERT: watch round failed, will retry: {error!r}"
+                self.log(text, "error")
+                if self.watcher is not None:
+                    self.watcher.delivery.notify(text, key=f"serve:{error!r}")
             await self.notify()
             await asyncio.sleep(self.interval)
 

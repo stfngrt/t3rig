@@ -47,7 +47,7 @@ a notice, once, when the rig needs attention, and you own each one until it's re
 | Notice | Your follow-up |
 |---|---|
 | `#N needs you: questions from <seat> <URL>` | Bring the operator the questions that have a real choice, record the answers on the issue, and remove `needs-answer` |
-| `ALERT: <what>`: a stuck seat, a seat at a usage limit, or a ping that keeps failing | Look into it, nudge `dev.lead` or fix what you can, and tell the operator only if it needs them |
+| `ALERT: <what>`: a stuck seat, a failed run, a seat at a usage limit, or a ping that keeps failing | Look into it, nudge `dev.lead` or fix what you can, and tell the operator only if it needs them |
 | `#N closed: <title> <URL>` | Queue the next issue in the agreed order, and tell the operator in one line what shipped |
 
 You don't get notices about your own questions. If one still reaches you, for example about a

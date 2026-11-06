@@ -45,7 +45,9 @@ class IssueWatch:
                 return found[1] if self.rig.seat(found[1]) else None
         return None
 
-    def _issue_pings(self, issue: Issue, entry: dict[str, Any] | None) -> list[tuple[str, Ping]]:
+    def _issue_pings(
+        self, issue: Issue, entry: dict[str, Any] | None, first_poll: bool
+    ) -> list[tuple[str, Ping]]:
         """Pings for one open issue's label changes, by seat; other changes are kept at once."""
         assert self.rig.tracker is not None
         key, queue_seat = str(issue.number), self.rig.tracker.queue_seat
@@ -67,25 +69,36 @@ class IssueWatch:
             updates[QUEUE_LABEL] = False
         if ANSWER_LABEL in issue.labels and not waiting:
             # Read now, before the answer adds signed comments of its own.
-            updates |= {ANSWER_LABEL: True, "asker": self._asker(issue.number)}
+            asker = self._asker(issue.number)
+            updates |= {ANSWER_LABEL: True, "asker": asker}
+            # Not on a rig's first poll: those labels were set before anyone was watching.
+            if not first_poll and (asker is None or asker != self.rig.notify_seat):
+                who = f"questions from {asker}" if asker else "questions"
+                self.delivery.notify(f"#{key} needs you: {who} {issue.url}")
         elif ANSWER_LABEL not in issue.labels and waiting:
             seat = (entry or {}).get("asker") or queue_seat
             text = f"The operator answered, and `{ANSWER_LABEL}` was removed"
             ping(seat, text, {ANSWER_LABEL: False, "asker": None})
-        self._apply_issue(key, updates)  # Even with none, so the issue counts as seen.
+        # Always, so the issue counts as seen; title and URL word its notice if it closes.
+        self._apply_issue(key, updates | {"title": issue.title, "url": issue.url})
         return pings
 
     def poll(self) -> None:
         """One round: ping when an open issue gains `rig-queue` or loses `needs-answer`."""
         issues = self.tracker.open_issues()
         self.issues = issues
+        first_poll = "issues" not in self.state
         known = self.state.setdefault("issues", {})
         open_keys = {str(issue.number) for issue in issues}
         for key in [key for key in known if key not in open_keys]:
-            del known[key]  # Closed: a reopened issue starts afresh.
+            # Closed, by the rig or the operator: they share one account, so every close counts.
+            gone = known.pop(key)  # A reopened issue starts afresh.
+            title = f": {gone['title']} {gone['url']}" if gone.get("url") else ""
+            self.delivery.notify(f"#{key} closed{title}")
         by_seat: dict[str, list[Ping]] = {}
         for issue in issues:
-            for seat, ping in self._issue_pings(issue, known.get(str(issue.number))):
+            entry = known.get(str(issue.number))
+            for seat, ping in self._issue_pings(issue, entry, first_poll):
                 by_seat.setdefault(seat, []).append(ping)
         for seat, pings in by_seat.items():
             self.delivery.send(seat, pings, ISSUE_CLOSING)

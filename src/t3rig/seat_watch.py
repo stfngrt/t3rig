@@ -198,7 +198,10 @@ class SeatWatch:
             for event in events:
                 # A dispatcher can't fix these, so a person has to hear about them too.
                 if event.needs_person:
-                    self.delivery.alert(event.line.removeprefix("- "))
+                    # Keyed by the run or request it's about, so it becomes one notice.
+                    what = ":".join(str(v) for v in event.updates.values())
+                    key = f"seat:{event.session_name}:{what}"
+                    self.delivery.alert(event.line.removeprefix("- "), key)
                 if event.dispatcher is None:
                     self._apply(event.session_name, event.updates)
                 else:

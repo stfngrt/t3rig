@@ -74,7 +74,7 @@ class Watcher:
         self.tracker_interval, self.clock = tracker_interval, clock
         self.next_poll = clock()
         self.state = load_state(path)
-        self.delivery = Delivery(rig, t3, out)
+        self.delivery = Delivery(rig, t3, out, self.state)
         self.seat_watch = SeatWatch(rig, t3, self.state, self.delivery)
         self.issue_watch = (
             IssueWatch(rig, t3, tracker, self.state, self.delivery) if tracker else None
@@ -87,6 +87,7 @@ class Watcher:
     def tick(self) -> None:
         """Check the seats once."""
         self.seat_watch.check()
+        self.delivery.send_notices()
         self.state["updated_at"] = datetime.now(UTC).isoformat()
         save_state(self.path, self.state)
 
@@ -94,6 +95,7 @@ class Watcher:
         """Check the open issues once."""
         assert self.issue_watch is not None
         self.issue_watch.poll()
+        self.delivery.send_notices()
         save_state(self.path, self.state)
 
     def step(self) -> None:

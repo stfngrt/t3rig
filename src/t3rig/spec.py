@@ -189,6 +189,7 @@ class Rig:
     summary: str | None = None
     tracker: TrackerSettings | None = None
     review_rounds: int = DEFAULT_REVIEW_ROUNDS
+    notify_seat: str | None = None
 
     def session_name(self, seat: Seat) -> str:
         """OpenRig's session name for a seat, used here as the T3 thread title."""
@@ -836,27 +837,35 @@ def _delegation_cycles(edges: list[Edge]) -> list[str]:
     ]
 
 
+def _load_notify_seat(data: dict[str, Any], seats: set[str], errors: list[str]) -> str | None:
+    notify_seat = data.get("notify_seat")
+    if notify_seat is not None and notify_seat not in seats:
+        errors.append(f"{SETTINGS_FILE}.notify_seat: no seat {notify_seat!r} in the rig")
+    return notify_seat
+
+
 def _load_settings(
     rig_root: Path, seats: set[str], errors: list[str]
-) -> tuple[TrackerSettings | None, int]:
+) -> tuple[TrackerSettings | None, int, str | None]:
     """t3rig's own settings, kept out of `rig.yaml` so it stays OpenRig's format."""
     path = rig_root / SETTINGS_FILE
     if not path.exists():
-        return None, DEFAULT_REVIEW_ROUNDS
+        return None, DEFAULT_REVIEW_ROUNDS, None
     data = _read_yaml_mapping(path, SETTINGS_FILE, errors)
     if data is None:
-        return None, DEFAULT_REVIEW_ROUNDS
-    _check_keys(data, {"tracker", "review_rounds"}, set(), SETTINGS_FILE, errors)
+        return None, DEFAULT_REVIEW_ROUNDS, None
+    _check_keys(data, {"tracker", "review_rounds", "notify_seat"}, set(), SETTINGS_FILE, errors)
+    notify_seat = _load_notify_seat(data, seats, errors)
     rounds = data.get("review_rounds", DEFAULT_REVIEW_ROUNDS)
     if type(rounds) is not int or rounds < 1:
         errors.append(f"{SETTINGS_FILE}.review_rounds: must be a positive integer (got {rounds!r})")
     raw = data.get("tracker")
     if raw is None:
-        return None, rounds
+        return None, rounds, notify_seat
     where = f"{SETTINGS_FILE}.tracker"
     if not isinstance(raw, dict):
         errors.append(f"{where}: must be a mapping")
-        return None, rounds
+        return None, rounds, notify_seat
     _check_keys(raw, {"kind", "repo", "queue_seat"}, set(), where, errors)
     kind, repo, queue_seat = raw.get("kind"), raw.get("repo"), raw.get("queue_seat")
     if kind not in TRACKER_KINDS:
@@ -865,7 +874,7 @@ def _load_settings(
         errors.append(f"{where}.repo: must be a non-empty string (got {repo!r})")
     if queue_seat not in seats:
         errors.append(f"{where}.queue_seat: no seat {queue_seat!r} in the rig")
-    return TrackerSettings(kind, repo, queue_seat), rounds
+    return TrackerSettings(kind, repo, queue_seat), rounds, notify_seat
 
 
 def load_rig(path: str | Path) -> Rig:
@@ -952,7 +961,7 @@ def load_rig(path: str | Path) -> Rig:
             _check_edge_ends(edge, True, seat_ids, where, errors)
             edges.append(edge)
 
-    tracker, review_rounds = _load_settings(rig_root, seat_ids, errors)
+    tracker, review_rounds, notify_seat = _load_settings(rig_root, seat_ids, errors)
     if not errors:
         errors.extend(_delegation_cycles(edges))
     if errors:
@@ -965,4 +974,5 @@ def load_rig(path: str | Path) -> Rig:
         summary=data.get("summary"),
         tracker=tracker,
         review_rounds=review_rounds,
+        notify_seat=notify_seat,
     )

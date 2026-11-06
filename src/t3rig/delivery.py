@@ -4,10 +4,15 @@ Seat watching and issue watching decide what to ping about; this module owns how
 recorded as delivered only after its send succeeds, so a failed one is found again and retried on
 the next round. After `ALERT_AFTER_FAILURES` failures in a row to the same seat, the failure is an
 ALERT.
+
+With a `notify_seat` in `rig.t3rig.yaml`, notices go to that seat too: every ALERT, and what
+issue watching reports. Each is sent once. Pending notices and the keys of sent ones are kept under
+"notices" in the watch state, so a restart neither repeats nor loses one.
 """
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 from t3rig.rig import envelope
 from t3rig.spec import Rig
@@ -16,6 +21,8 @@ from t3rig.threads import T3, RigError, seat_threads, thread_ids
 
 ALERT_AFTER_FAILURES = 3
 SENDER = "t3rig watch"
+NOTICE_CLOSING = "These are notices for you. Follow up on each as your role says."
+SENT_KEYS_KEPT = 500  # Enough to cover every alert that can still repeat.
 
 
 @dataclass
@@ -28,16 +35,61 @@ class Ping:
 
 
 class Delivery:
-    def __init__(self, rig: Rig, t3: T3, out: Callable[[str], None] = print) -> None:
+    def __init__(
+        self,
+        rig: Rig,
+        t3: T3,
+        out: Callable[[str], None] = print,
+        state: dict[str, Any] | None = None,
+    ) -> None:
         self.rig, self.t3, self.out = rig, t3, out
         self.failures: dict[tuple[str, str], int] = {}
+        self.notices: dict[str, list[Any]] | None = None
+        if rig.notify_seat is not None:
+            notices = (state if state is not None else {}).setdefault("notices", {})
+            notices.setdefault("sent", [])
+            notices.setdefault("pending", [])
+            self.notices = notices
 
-    def alert(self, text: str) -> None:
-        """Something a person has to hear about. Printed on the watch console."""
+    def alert(self, text: str, key: str | None = None) -> None:
+        """Something a person has to hear about: printed on the watch console, and with a `key`,
+        sent once to the notify seat as a notice."""
         self.out(f"ALERT: {text}")
+        if key is not None:
+            self.notify(f"ALERT: {text}", key)
+
+    def notify(self, text: str, key: str | None = None) -> None:
+        """Queue a notice for the notify seat. One with a `key` is sent only once."""
+        if self.notices is None:
+            return
+        pending, sent = self.notices["pending"], self.notices["sent"]
+        if key is not None and (key in sent or any(n["key"] == key for n in pending)):
+            return
+        pending.append({"key": key, "text": text})
+
+    def send_notices(self, threads: dict[str, str] | None = None) -> None:
+        """Send the pending notices. Ones that fail stay pending for the next round."""
+        if not self.notices or not self.notices["pending"] or self.rig.notify_seat is None:
+            return
+        pending, sent = self.notices["pending"], self.notices["sent"]
+
+        def delivered(notice: dict[str, Any]) -> None:
+            pending.remove(notice)
+            if notice["key"] is not None:
+                sent.append(notice["key"])
+                del sent[:-SENT_KEYS_KEPT]
+
+        pings = [Ping("notice", f"- {n['text']}", lambda n=n: delivered(n)) for n in list(pending)]
+        # A notice that can't be sent is printed, but never becomes a notice itself.
+        self.send(self.rig.notify_seat, pings, NOTICE_CLOSING, threads, notice_on_alert=False)
 
     def send(
-        self, seat: str, pings: list[Ping], closing: str, threads: dict[str, str] | None = None
+        self,
+        seat: str,
+        pings: list[Ping],
+        closing: str,
+        threads: dict[str, str] | None = None,
+        notice_on_alert: bool = True,
     ) -> bool:
         """Send pings to a seat as one message. `threads` maps seat ids to thread ids, if known."""
         summary = ", ".join(ping.about for ping in pings)
@@ -55,7 +107,8 @@ class Delivery:
             self.failures[key] = count
             text = f"can't ping {seat} about {summary} (try {count}): {error}"
             if count >= ALERT_AFTER_FAILURES:
-                self.alert(text)
+                notice_key = f"ping:{seat}:{closing}:{summary}" if notice_on_alert else None
+                self.alert(text, notice_key)
             else:
                 self.out(text)
             return False

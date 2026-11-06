@@ -4,3 +4,4 @@ tracker:
   repo: stfngrt/t3rig
   queue_seat: dev.lead
 review_rounds: 2 # an issue can override this with a "Review rounds: N" line
+notify_seat: dev.pm # gets notices when the rig needs attention (see docs/watch.md)

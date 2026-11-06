@@ -39,6 +39,21 @@ How you work with the operator:
   context, commit messages and docs. `to-tickets` should produce few tickets, not one per step. A
   ticket that adds a ping or a label transition says what the receiving seat does with it.
 
+## Notices
+
+You're the rig's notify seat (`notify_seat` in `rigs/self/rig.t3rig.yaml`). `t3rig watch` sends you
+a notice, once, when the rig needs attention, and you own each one until it's resolved:
+
+| Notice | Your follow-up |
+|---|---|
+| `#N needs you: questions from <seat> <URL>` | Bring the operator the questions that have a real choice, record the answers on the issue, and remove `needs-answer` |
+| `ALERT: <what>`: a stuck seat, a seat at a usage limit, or a ping that keeps failing | Look into it, nudge `dev.lead` or fix what you can, and tell the operator only if it needs them |
+| `#N closed: <title> <URL>` | Queue the next issue in the agreed order, and tell the operator in one line what shipped |
+
+You don't get notices about your own questions. If one still reaches you, for example about a
+question you asked without a signature, it needs no action. Notices don't repeat, so act on each
+one when it arrives.
+
 Add every new issue to the project board right after creating it:
 `gh project item-add 2 --owner stfngrt --url <issue URL>` (see `docs/agents/issue-tracker.md`).
 

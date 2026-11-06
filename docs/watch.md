@@ -38,11 +38,33 @@ changes labels or writes comments.
   {term}`stuck seat` with no dispatcher also prints one, and so does a seat stopped at a usage
   limit, which `watch` recognizes from the wording of its last reply.
 
+## Notices
+
+With `notify_seat` set in `rig.t3rig.yaml` (see {doc}`rig-specs`), `watch` also sends that seat a
+{term}`notice` when the rig needs a person. Its thread lighting up in T3 is the notification. There
+are three kinds:
+
+- **A question:** an open issue gains {term}`needs-answer` and the question's `🤖 <seat>` signature
+  isn't the notify seat's own: `#24 needs you: questions from dev.lead <URL>`. Labels already set
+  on the first tracker check of a rig aren't announced.
+- **An `ALERT`:** every alert above, such as a stuck seat, a seat at a usage limit, or a ping that
+  keeps failing: `ALERT: <what>`. An alert that repeats each check is noticed once.
+- **A close:** an issue `watch` was tracking leaves the open list: `#24 closed: <title> <URL>`.
+  The rig and the operator share one GitHub account, so every close counts, not only the rig's. An
+  issue `watch` never saw open isn't announced.
+
+Each notice is sent once and never repeated as a reminder. One that can't be delivered is retried
+on the next check, like a ping, and the notices waiting to go out survive a restart. A notice that
+keeps failing prints an `ALERT`, but that alert doesn't become a notice itself.
+
+Not noticed: {term}`needs-approval`, which `dev.pm` sets itself, and a seat finishing a run, which
+still pings its dispatcher.
+
 ## State
 
-It keeps what it has pinged, and the labels it last saw on each tracked issue, in a small file under
-`~/.local/state/t3rig/`, so a restart neither repeats old pings nor misses new ones. A crash can
-repeat a ping, but not lose one.
+It keeps what it has pinged, the labels it last saw on each tracked issue, and its notices, in a
+small file under `~/.local/state/t3rig/`, so a restart neither repeats old pings nor misses new
+ones. A crash can repeat a ping, but not lose one.
 
 ## Running it
 

@@ -133,3 +133,8 @@ none recorded (it predates the rule)
 
 - The live `watch` was older code that writes no lock record, which the first `ps` change read as
   "not running". When a file format gains a field, check how a running older version's file reads.
+
+## 2026-11-07: [#25](https://github.com/stfngrt/t3rig/issues/25) Prepare the PyPI release
+
+- The docs site deploys from `main`, so install docs changed for a release that hasn't happened
+  would mislead readers at once. Docs for a future release go in the release PR's checklist.

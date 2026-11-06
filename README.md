@@ -16,22 +16,19 @@ Status: early, simple version. It has been run on a two-seat Claude rig.
 Requires [uv](https://docs.astral.sh/uv/) and a running T3 Code with the `t3` CLI.
 
 ```sh
-uv tool install 't3rig[serve]'   # with the status page, which `t3rig run` needs
-t3rig --version
+git clone https://github.com/stfngrt/t3rig
+cd t3rig
+uv run t3rig --version
 ```
 
-`uv tool install t3rig` installs it without the status page (`run` and `serve`). It needs Python
-3.13; add `--python 3.13` if uv picks an older one. To work on t3rig itself, clone the repository
-and use `uv run t3rig` there.
+Once t3rig is on PyPI, `uv tool install 't3rig[serve]'` will install it as a command instead.
 
 ## Quick start
 
-With a rig spec, such as [`examples/two-seat/rig.yaml`](https://github.com/stfngrt/t3rig/blob/main/examples/two-seat/rig.yaml):
-
 ```sh
-t3rig validate rig.yaml               # check the spec; starts nothing
-t3rig run rig.yaml                    # start the seats and keep them going
-t3rig send rig.yaml dev.impl "Hello"  # in another terminal
+uv run t3rig validate examples/two-seat/rig.yaml   # check the spec; starts nothing
+uv run t3rig run examples/two-seat/rig.yaml        # start the seats and keep them going
+uv run t3rig send examples/two-seat/rig.yaml dev.impl "Hello"   # in another terminal
 ```
 
 ## Docs

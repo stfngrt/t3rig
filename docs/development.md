@@ -28,6 +28,17 @@ publishing](https://docs.pypi.org/trusted-publishers/): no token is stored anywh
 
 1. In the release pull request, set `version` in `pyproject.toml` to the new `X.Y.Z`, and move the
    "Unreleased" entries in `CHANGELOG.md` under a heading for that version.
+
+   For the **first** release only, the same pull request switches the install path to PyPI, since
+   the docs site deploys from `main` and would otherwise point readers at a package that isn't
+   there yet:
+   - `README.md` and `docs/getting-started.md` lead with `uv tool install 't3rig[serve]'` (it needs
+     Python 3.13: add `--python 3.13` if uv picks an older one), and keep the checkout as the way
+     to work on t3rig;
+   - `docs/serve.md`, the `run` and `serve` help in `src/t3rig/cli.py`, and its "needs the serve
+     extra" error (and the test for it in `tests/test_cli.py`) name `uv tool install
+     't3rig[serve]'` before `uv sync --extra serve`;
+   - drop "(not yet released)" from the version's heading in `CHANGELOG.md`.
 2. After it's merged, tag the merge commit and push the tag:
 
    ```sh
@@ -42,13 +53,18 @@ publishing](https://docs.pypi.org/trusted-publishers/): no token is stored anywh
 To try a build first, run the workflow by hand (**Actions → Release → Run workflow**). It runs the
 same checks and build, skips the tag check, and publishes to
 [TestPyPI](https://test.pypi.org/p/t3rig) from the environment `testpypi`. TestPyPI refuses a
-version it already has, so bump the version for each trial. Check it with:
+version it already has, so a second run of the same version fails; bump the version for each
+trial. Check it with:
 
 ```sh
 uv tool install --index-url https://test.pypi.org/simple/ \
-  --extra-index-url https://pypi.org/simple/ t3rig
+  --extra-index-url https://pypi.org/simple/ 't3rig==X.Y.Z'
 t3rig --version
 ```
+
+The extra index supplies the dependencies TestPyPI doesn't have. uv searches the extra index
+before the main one, so without the pin it could install a release from PyPI instead; pinning the
+trial version makes sure the TestPyPI build is the one tested.
 
 **Once, before the first publish**, the operator sets up PyPI and TestPyPI:
 
@@ -60,7 +76,8 @@ t3rig --version
   - Workflow name: `release.yml`
   - Environment name: `pypi` on PyPI, `testpypi` on TestPyPI
 - In the GitHub repository, create the environments `pypi` and `testpypi` (**Settings →
-  Environments**). Limiting `pypi` to tags matching `v*` keeps branches from publishing.
+  Environments**), and restrict `pypi`'s deployment to tags matching `v*`, so that only a release
+  tag can publish to PyPI.
 
 ## The self rig
 

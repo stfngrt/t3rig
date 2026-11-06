@@ -8,6 +8,8 @@ uv sync --extra serve       # in the t3rig checkout; plain `uv sync` includes it
 t3rig serve rigs/self/rig.yaml
 ```
 
+`t3rig run` brings the rig up first and then does the same (see {doc}`getting-started`).
+
 It prints the page's address, `http://127.0.0.1:8765/` by default (`--port`). By default it listens
 on localhost only. It has no login. It answers only requests addressed to `127.0.0.1`, `localhost`
 or the `--host` address, so another website can't reach it by pointing its own domain name at your

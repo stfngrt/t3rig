@@ -13,7 +13,7 @@ from t3rig.skills import apply_skills, plan_skills
 from t3rig.spec import Rig, SpecError, load_rig
 from t3rig.t3 import T3Cli, T3Error
 from t3rig.threads import T3, T3Code
-from t3rig.watch import dispatchers, last_check, watch, watch_running
+from t3rig.watch import dispatchers, last_check, watch, watch_holder, watch_running
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -100,28 +100,39 @@ def build_parser() -> argparse.ArgumentParser:
     )
     watch_parser.add_argument("--once", action="store_true", help="check once and exit")
 
+    run_parser = commands.add_parser(
+        "run",
+        help="Bring the rig up as `up` does, then serve it as `serve` does, in the foreground. "
+        "Ctrl-C stops serving and leaves the seats running. Needs the serve extra: "
+        "uv sync --extra serve.",
+    )
+    run_parser.add_argument("rig", help="path to rig.yaml")
+    run_parser.add_argument(
+        "--yes", action="store_true", help="apply the skill changes shown, as `up --yes` does"
+    )
     serve_parser = commands.add_parser(
         "serve",
         help="Run watch as a server, with a live read-only status page on 127.0.0.1, or --host. "
         "Needs the serve extra: uv sync --extra serve.",
     )
     serve_parser.add_argument("rig", help="path to rig.yaml")
-    serve_parser.add_argument(
-        "--host",
-        default="127.0.0.1",
-        help="address to serve on, such as a LAN address; anyone who can reach it can read "
-        "the page (default: 127.0.0.1)",
-    )
-    serve_parser.add_argument("--port", type=int, default=8765, help="port (default: 8765)")
-    serve_parser.add_argument(
-        "--interval", type=float, default=15, help="seconds between seat checks (default: 15)"
-    )
-    serve_parser.add_argument(
-        "--tracker-interval",
-        type=float,
-        default=60,
-        help="seconds between issue tracker checks, if rig.t3rig.yaml sets one (default: 60)",
-    )
+    for server_parser in (run_parser, serve_parser):
+        server_parser.add_argument(
+            "--host",
+            default="127.0.0.1",
+            help="address to serve on, such as a LAN address; anyone who can reach it can read "
+            "the page (default: 127.0.0.1)",
+        )
+        server_parser.add_argument("--port", type=int, default=8765, help="port (default: 8765)")
+        server_parser.add_argument(
+            "--interval", type=float, default=15, help="seconds between seat checks (default: 15)"
+        )
+        server_parser.add_argument(
+            "--tracker-interval",
+            type=float,
+            default=60,
+            help="seconds between issue tracker checks, if rig.t3rig.yaml sets one (default: 60)",
+        )
     return parser
 
 
@@ -160,9 +171,14 @@ def _status_text(row: dict) -> str:
 
 def _ps(rig: Rig, t3: T3, as_json: bool) -> None:
     rows = seat_rows(rig, t3)
-    checked, running = last_check(rig), watch_running(rig)
+    checked, running, holder = last_check(rig), watch_running(rig), watch_holder(rig)
     if as_json:
-        status = {"seats": rows, "watch_running": running, "watch_last_check": checked}
+        status = {
+            "seats": rows,
+            "watch_running": running,
+            "watch_holder": holder,
+            "watch_last_check": checked,
+        }
         print(json.dumps(status, indent=2))
         return
     table = [("SEAT", "RUNTIME", "MODEL", "MODE", "STATUS", "UPDATED", "THREAD")]
@@ -191,7 +207,7 @@ def _ps(rig: Rig, t3: T3, as_json: bool) -> None:
                 file=sys.stderr,
             )
     if dispatchers(rig) or rig.tracker:
-        state = "running" if running else "not running"
+        state = "not running" if not running else f"running in {holder}" if holder else "running"
         print(f"watch: {state}, " + (f"last check {ago(checked)}" if checked else "has never run"))
 
 
@@ -254,15 +270,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _send(rig, t3, args)
         elif args.command == "log":
             print(log(rig, t3, args.seat, args.messages, args.thread), end="")
-        elif args.command == "serve":
+        elif args.command in ("serve", "run"):
             try:
                 from t3rig.serve import serve
             except ModuleNotFoundError as error:
                 raise RigError(
-                    f"serve needs the serve extra ({error.name} is missing): "
+                    f"{args.command} needs the serve extra ({error.name} is missing): "
                     "run `uv sync --extra serve` in the t3rig checkout"
                 ) from error
-            serve(rig, t3, args.port, args.interval, args.tracker_interval, args.host)
+            up_first = (lambda: _up(rig, t3, args.yes)) if args.command == "run" else None
+            return serve(
+                rig, t3, args.port, args.interval, args.tracker_interval, args.host, up_first
+            )
         elif args.command == "watch":
             watch(
                 rig,

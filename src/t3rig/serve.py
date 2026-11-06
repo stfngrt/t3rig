@@ -363,19 +363,36 @@ class _Uvicorn(uvicorn.Server):
         super().handle_exit(sig, frame)
 
 
+def run_uvicorn(app: FastAPI, host: str, port: int, on_exit: Callable[[], None]) -> None:
+    """Serve the app in the foreground until Ctrl-C."""
+    config = uvicorn.Config(app, host=host, port=port, log_level="warning")
+    _Uvicorn(config, on_exit).run()
+
+
 def serve(
-    rig: Rig, t3: T3, port: int, interval: float, tracker_interval: float, host: str = HOST
-) -> None:
+    rig: Rig,
+    t3: T3,
+    port: int,
+    interval: float,
+    tracker_interval: float,
+    host: str = HOST,
+    up: Callable[[], int] | None = None,
+) -> int:
+    """Serve the rig until Ctrl-C. With `up` (for `t3rig run`), run it first, under the rig's
+    lock, and serve only if it returns 0; otherwise return its code."""
     check_host(host)
-    with single_watcher(state_path(rig)):  # Refuses if `t3rig watch` or another serve runs.
+    command = "t3rig run" if up else "t3rig serve"
+    # Refuses if another `watch`, `serve` or `run` holds the rig, before anything starts.
+    with single_watcher(state_path(rig), command):
+        if up is not None and (code := up()) != 0:
+            return code
         # Built under the lock, so the watch state is read only once nobody else writes it.
         server = RigServer(
             rig, t3, interval, tracker_interval, out=lambda line: print(line, flush=True)
         )
         shown = f"[{host}]" if ":" in host else host
-        print(f"t3rig serve: http://{shown}:{port}/ ({rig.name})", flush=True)
+        print(f"{command}: http://{shown}:{port}/ ({rig.name})", flush=True)
         if host != HOST:
             print("Anyone who can reach this address can read the page; it has no login.")
-        app = create_app(server, host)
-        config = uvicorn.Config(app, host=host, port=port, log_level="warning")
-        _Uvicorn(config, server.close_streams).run()
+        run_uvicorn(create_app(server, host), host, port, server.close_streams)
+    return 0

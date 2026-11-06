@@ -117,8 +117,27 @@ def check_watchable(rig: Rig) -> None:
         raise RigError(f"rig {rig.name} has no delegates_to edges, so there's nobody to ping")
 
 
+def watch_holder(rig: Rig) -> str | None:
+    """Who holds the rig's lock, such as "t3rig run (pid 1234)". None if nobody does, or if the
+    holder is an older t3rig that didn't record itself."""
+    if not watch_running(rig):
+        return None
+    try:
+        return _holder_text(state_path(rig).with_suffix(".lock").read_text())
+    except OSError:
+        return None
+
+
+def _holder_text(text: str) -> str | None:
+    try:
+        holder = json.loads(text)
+        return f"{holder['command']} (pid {holder['pid']})"
+    except (ValueError, KeyError, TypeError):
+        return None  # Written by an older t3rig, which didn't record its holder.
+
+
 def watch_running(rig: Rig) -> bool:
-    """Whether a `watch` or `serve` holds the rig's lock. Creates no file or folder."""
+    """Whether a `watch`, `serve` or `run` holds the rig's lock. Creates no file or folder."""
     try:
         lock = open(state_path(rig).with_suffix(".lock"), "rb")
     except FileNotFoundError:
@@ -134,13 +153,23 @@ def watch_running(rig: Rig) -> bool:
 
 
 @contextmanager
-def single_watcher(path: Path) -> Iterator[None]:
+def single_watcher(path: Path, command: str = "t3rig watch") -> Iterator[None]:
+    """Hold the rig's lock, so one `watch`, `serve` or `run` works on it at a time. The lock file
+    names its holder, so a refusal can say who it is."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path.with_suffix(".lock"), "w") as lock:
+    # Opened without truncating, so a refused process can't wipe the holder's record.
+    with open(path.with_suffix(".lock"), "a+") as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as error:
-            raise RigError("another `t3rig watch` is already running for this rig") from error
+            lock.seek(0)
+            holder = _holder_text(lock.read())
+            who = holder or "t3rig watch or serve"
+            raise RigError(f"another {who} is already running for this rig") from error
+        lock.seek(0)
+        lock.truncate()
+        lock.write(json.dumps({"command": command, "pid": os.getpid()}))
+        lock.flush()
         yield
 
 

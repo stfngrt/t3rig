@@ -130,20 +130,20 @@ def _wanted(cwd: Path, seats: list[Seat], errors: list[str]) -> dict[str, _Wante
                 data = item.source.read_bytes()
                 mode = item.source.stat().st_mode & 0o777
             except OSError as error:
-                errors.append(f"{seat.qualified_id}: can't read {item.source}: {error.strerror}")
+                errors.append(f"{seat.seat_id}: can't read {item.source}: {error.strerror}")
                 continue
             known = wanted.get(path)
             if known is None:
-                wanted[path] = _Wanted(data, mode, [(seat.qualified_id, item.source)])
+                wanted[path] = _Wanted(data, mode, [(seat.seat_id, item.source)])
             elif (known.data, known.mode) != (data, mode):
                 first_seat, first_source = known.who[0]
                 errors.append(
-                    f"{cwd / path}: {first_seat} ({first_source}) and {seat.qualified_id} "
+                    f"{cwd / path}: {first_seat} ({first_source}) and {seat.seat_id} "
                     f"({item.source}) want different content or permissions here; "
                     "make the sources match"
                 )
             else:
-                known.who.append((seat.qualified_id, item.source))
+                known.who.append((seat.seat_id, item.source))
     return wanted
 
 

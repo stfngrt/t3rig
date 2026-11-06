@@ -50,7 +50,7 @@ def seat_rows(rig: Rig, t3: T3) -> list[dict[str, Any]]:
             pending = details.get("pendingRequestCount", 0)
         rows.append(
             {
-                "seat": status.seat.qualified_id,
+                "seat": status.seat.seat_id,
                 "session_name": status.session_name,
                 "runtime": status.seat.runtime,
                 "model": thread.get("model") or status.seat.model,
@@ -90,19 +90,19 @@ def envelope(sender: str, recipient: str, body: str) -> str:
 def _peer_lines(rig: Rig, seat: Seat) -> list[str]:
     lines = []
     for edge in rig.edges:
-        if edge.source == seat.qualified_id:
+        if edge.source == seat.seat_id:
             lines.append(f"- You {edge.kind} {edge.target}")
-        elif edge.target == seat.qualified_id:
+        elif edge.target == seat.seat_id:
             lines.append(f"- {edge.source} {edge.kind} you")
     return lines
 
 
 def seat_brief(rig: Rig, seat: Seat) -> str:
-    """The first message a seat's thread receives."""
-    send_command = t3rig_command("send", "--from", seat.qualified_id, str(rig.path))
-    others = [s.qualified_id for s in rig.seats if s != seat]
+    """A seat's brief: the first message its thread receives."""
+    send_command = t3rig_command("send", "--from", seat.seat_id, str(rig.path))
+    others = [s.seat_id for s in rig.seats if s != seat]
     parts = [
-        f"You are seat {seat.qualified_id} in the agent team (rig) {rig.name}.",
+        f"You are seat {seat.seat_id} in the agent team (rig) {rig.name}.",
         f"Your working directory for this rig is {seat.cwd}. Change to it before working.",
     ]
     if rig.summary:
@@ -143,7 +143,7 @@ def _archive_quietly(t3: T3, thread_id: str) -> None:
 
 
 def _launch(rig: Rig, t3: T3, seat: Seat, status: SeatThread) -> None:
-    """Launch idle, check T3 applied the settings, and only then send the first message."""
+    """Launch idle, check T3 applied the settings, and only then send the brief."""
     arguments: dict[str, Any] = {
         "projectId": _project_id(t3, seat.cwd),
         "title": status.session_name,
@@ -175,7 +175,7 @@ def _launch(rig: Rig, t3: T3, seat: Seat, status: SeatThread) -> None:
         if wanted is not None and wanted != actual:
             _archive_quietly(t3, thread_id)
             raise RigError(
-                f"{seat.qualified_id}: wanted {name} {wanted}, but T3 applied {actual}; "
+                f"{seat.seat_id}: wanted {name} {wanted}, but T3 applied {actual}; "
                 "archived the thread before it started"
             )
     t3.send(thread_id, seat_brief(rig, seat))
@@ -184,7 +184,7 @@ def _launch(rig: Rig, t3: T3, seat: Seat, status: SeatThread) -> None:
 def _preflight(seats: list[Seat], t3: T3) -> None:
     """Refuse before starting anything, so a rig isn't left half up."""
     missing_model = [
-        s.qualified_id for s in seats if not s.model and (s.runtime != "claude-code" or s.effort)
+        s.seat_id for s in seats if not s.model and (s.runtime != "claude-code" or s.effort)
     ]
     if missing_model:
         # T3 takes a provider and effort only with a model, so these would run on the default.
@@ -197,7 +197,7 @@ def _preflight(seats: list[Seat], t3: T3) -> None:
         mode = seat.runtime_mode
         if mode and ACCESS_LEVELS.index(mode) > ACCESS_LEVELS.index(access):
             raise RigError(
-                f"{seat.qualified_id} needs {mode}, but you're signed in at {access}; "
+                f"{seat.seat_id} needs {mode}, but you're signed in at {access}; "
                 f"run `t3rig login --access {mode}` if you want to allow that"
             )
 
@@ -210,7 +210,7 @@ def up(rig: Rig, t3: T3) -> list[str]:
         if status.thread is None:
             to_start.append(status)
         else:
-            name = status.seat.qualified_id
+            name = status.seat.seat_id
             lines.append(f"{name}: already has thread {status.thread['threadId']}")
     _preflight([s.seat for s in to_start], t3)
 
@@ -230,17 +230,15 @@ def up(rig: Rig, t3: T3) -> list[str]:
         if seat not in started:
             continue
         if status.thread is None:
-            raise RigError(
-                f"{seat.qualified_id}: started, but no thread titled {status.session_name}"
-            )
+            raise RigError(f"{seat.seat_id}: started, but no thread titled {status.session_name}")
         provider = status.thread.get("providerInstanceId")
         if provider != PROVIDERS[seat.runtime]:
             raise RigError(
-                f"{seat.qualified_id}: expected {seat.runtime}, but T3 used {provider}. "
+                f"{seat.seat_id}: expected {seat.runtime}, but T3 used {provider}. "
                 "Set a model on this seat or change the project's default."
             )
         mode = status.thread.get("runtimeMode", "unknown mode")
-        lines.append(f"{seat.qualified_id}: started {status.thread['threadId']} ({mode})")
+        lines.append(f"{seat.seat_id}: started {status.thread['threadId']} ({mode})")
     return lines
 
 
@@ -254,7 +252,7 @@ def down(rig: Rig, t3: T3, seat: str | None = None) -> tuple[list[str], bool]:
     t3.access()  # Sign in first, so a missing sign-in is one error rather than one per thread.
     lines, ok = [], True
     for owner, thread in threads:
-        name, thread_id = owner.qualified_id, thread["threadId"]
+        name, thread_id = owner.seat_id, thread["threadId"]
         try:
             if is_busy(thread):
                 t3.interrupt(thread_id)
@@ -266,7 +264,7 @@ def down(rig: Rig, t3: T3, seat: str | None = None) -> tuple[list[str], bool]:
     still_listed = {t["threadId"] for _, t in all_seat_threads(rig, t3, seats)}
     for owner, thread in threads:
         if thread["threadId"] in still_listed and ok:
-            lines.append(f"{owner.qualified_id}: {thread['threadId']} is still active")
+            lines.append(f"{owner.seat_id}: {thread['threadId']} is still active")
             ok = False
     return lines, ok
 
@@ -282,16 +280,16 @@ def stop(
     (chosen,) = select_seats(rig, seat)
     thread = seat_thread(rig, t3, chosen)
     if not is_busy(thread):
-        return f"{chosen.qualified_id}: nothing to stop ({thread.get('status')})"
+        return f"{chosen.seat_id}: nothing to stop ({thread.get('status')})"
     thread_id = thread["threadId"]
     t3.interrupt(thread_id, reason="Stopped with t3rig stop")
     deadline = time.monotonic() + wait_seconds
     while True:
         status = t3.show_thread(thread_id, messages=0).get("thread", {}).get("status")
         if status not in BUSY_STATUSES:
-            return f"{chosen.qualified_id}: stopped ({status}); it can be messaged again"
+            return f"{chosen.seat_id}: stopped ({status}); it can be messaged again"
         if time.monotonic() >= deadline:
-            return f"{chosen.qualified_id}: stop requested, but it's still {status}"
+            return f"{chosen.seat_id}: stop requested, but it's still {status}"
         sleep(2)
 
 
@@ -308,12 +306,12 @@ def select_seats(
     if seat is not None:
         found = rig.seat(seat)
         if found is None:
-            known = ", ".join(s.qualified_id for s in rig.seats)
+            known = ", ".join(s.seat_id for s in rig.seats)
             raise RigError(f"no seat {seat!r} in rig {rig.name} (seats: {known})")
         return [found]
     if pod is not None and not any(s.pod == pod for s in rig.seats):
         raise RigError(f"no pod {pod!r} in rig {rig.name}")
-    chosen = [s for s in rig.seats if (everyone or s.pod == pod) and s.qualified_id != sender]
+    chosen = [s for s in rig.seats if (everyone or s.pod == pod) and s.seat_id != sender]
     if not chosen:
         raise RigError("nobody to send to; the sender is the only seat selected")
     return chosen
@@ -330,7 +328,7 @@ def send(
 ) -> list[SendResult]:
     """Message each seat. One seat failing doesn't stop the others."""
     threads = {s.seat: s.thread for s in seat_threads(rig, t3)}
-    recipients = ", ".join(seat.qualified_id for seat in seats)
+    recipients = ", ".join(seat.seat_id for seat in seats)
     body = message if raw else envelope(sender or DEFAULT_SENDER, recipients, message)
     results = []
     for seat in seats:

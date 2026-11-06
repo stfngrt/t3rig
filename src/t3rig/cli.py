@@ -104,7 +104,7 @@ def build_parser() -> argparse.ArgumentParser:
         "run",
         help="Bring the rig up as `up` does, then serve it as `serve` does, in the foreground. "
         "Ctrl-C stops serving and leaves the seats running. Needs the serve extra: "
-        "uv sync --extra serve.",
+        "uv tool install 't3rig[serve]'.",
     )
     run_parser.add_argument("rig", help="path to rig.yaml")
     run_parser.add_argument(
@@ -113,7 +113,7 @@ def build_parser() -> argparse.ArgumentParser:
     serve_parser = commands.add_parser(
         "serve",
         help="Run watch as a server, with a live read-only status page on 127.0.0.1, or --host. "
-        "Needs the serve extra: uv sync --extra serve.",
+        "Needs the serve extra: uv tool install 't3rig[serve]'.",
     )
     serve_parser.add_argument("rig", help="path to rig.yaml")
     for server_parser in (run_parser, serve_parser):
@@ -275,8 +275,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 from t3rig.serve import serve
             except ModuleNotFoundError as error:
                 raise RigError(
-                    f"{args.command} needs the serve extra ({error.name} is missing): "
-                    "run `uv sync --extra serve` in the t3rig checkout"
+                    f"{args.command} needs the serve extra ({error.name} is missing): install it "
+                    "with `uv tool install 't3rig[serve]'`, or in a t3rig checkout run "
+                    "`uv sync --extra serve`"
                 ) from error
             up_first = (lambda: _up(rig, t3, args.yes)) if args.command == "run" else None
             return serve(

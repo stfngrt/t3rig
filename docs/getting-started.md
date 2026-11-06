@@ -5,11 +5,27 @@ t3rig runs [OpenRig](https://github.com/mvschwarz/openrig)-compatible `rig.yaml`
 
 It requires [uv](https://docs.astral.sh/uv/) and a running T3 Code with the `t3` CLI.
 
+## Install
+
+```sh
+uv tool install 't3rig[serve]'
+t3rig --version
+```
+
+The `serve` extra adds the status page, which `t3rig run` and `t3rig serve` need. Without it,
+`uv tool install t3rig` installs everything else. t3rig needs Python 3.13 or later; if uv picks an
+older Python and refuses, add `--python 3.13`.
+
+To work on t3rig itself, or to try the examples in the repository, run it from a checkout instead:
+
 ```sh
 git clone https://github.com/stfngrt/t3rig
 cd t3rig
-uv run t3rig --version
+uv run t3rig --version   # `uv sync` includes the serve extra for development
 ```
+
+The commands below are written for a checkout (`uv run t3rig`); with an installed tool, use
+`t3rig` on its own.
 
 ## Run a rig
 
@@ -28,7 +44,8 @@ loop and the page and leaves the seats running; `t3rig down` stops the seats.
 - Only one `run`, `serve` or `watch` works on a rig at a time. A second one exits and says which
   process holds the rig, for example
   `another t3rig run (pid 1234) is already running for this rig`.
-- It needs the serve extra, as `serve` does: `uv sync --extra serve` (plain `uv sync` includes it).
+- It needs the serve extra, as `serve` does: `uv tool install 't3rig[serve]'`, or in a checkout
+  `uv sync --extra serve` (plain `uv sync` includes it).
 
 ## Basic commands
 

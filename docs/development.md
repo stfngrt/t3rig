@@ -20,6 +20,48 @@ uv run sphinx-build -W -b html docs docs/_build/html
 Warnings fail the build. The CLI reference is generated from `t3rig.cli.build_parser`, so it needs
 no manual updates. The site is deployed to GitHub Pages from `main`.
 
+## Releasing
+
+t3rig is published to PyPI as [`t3rig`](https://pypi.org/p/t3rig) by
+`.github/workflows/release.yml`, with [trusted
+publishing](https://docs.pypi.org/trusted-publishers/): no token is stored anywhere.
+
+1. In the release pull request, set `version` in `pyproject.toml` to the new `X.Y.Z`, and move the
+   "Unreleased" entries in `CHANGELOG.md` under a heading for that version.
+2. After it's merged, tag the merge commit and push the tag:
+
+   ```sh
+   git tag vX.Y.Z
+   git push origin vX.Y.Z
+   ```
+
+   The workflow runs the checks (ruff, pytest and the `-W` docs build), fails if the tag isn't `v`
+   plus the version in `pyproject.toml`, builds with `uv build`, and publishes from the GitHub
+   environment `pypi`.
+
+To try a build first, run the workflow by hand (**Actions → Release → Run workflow**). It runs the
+same checks and build, skips the tag check, and publishes to
+[TestPyPI](https://test.pypi.org/p/t3rig) from the environment `testpypi`. TestPyPI refuses a
+version it already has, so bump the version for each trial. Check it with:
+
+```sh
+uv tool install --index-url https://test.pypi.org/simple/ \
+  --extra-index-url https://pypi.org/simple/ t3rig
+t3rig --version
+```
+
+**Once, before the first publish**, the operator sets up PyPI and TestPyPI:
+
+- Create an account on each, with two-factor authentication.
+- On each, add a pending trusted publisher (PyPI: **Account settings → Publishing**) with:
+  - PyPI project name: `t3rig`
+  - Owner: `stfngrt`
+  - Repository name: `t3rig`
+  - Workflow name: `release.yml`
+  - Environment name: `pypi` on PyPI, `testpypi` on TestPyPI
+- In the GitHub repository, create the environments `pypi` and `testpypi` (**Settings →
+  Environments**). Limiting `pypi` to tags matching `v*` keeps branches from publishing.
+
 ## The self rig
 
 `rigs/self` develops t3rig with t3rig, as four seats. The {term}`project manager` (`dev.pm`) works

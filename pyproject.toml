@@ -5,10 +5,29 @@ description = "Run OpenRig-compatible rig specs as T3 Code threads"
 authors = [
     { name = "Stefan Engert", email = "6205109+stfngrt@users.noreply.github.com" }
 ]
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.13"
+keywords = ["openrig", "t3code", "agents", "claude-code", "codex", "multi-agent", "orchestration"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: POSIX",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development",
+]
 dependencies = [
     "pyyaml>=6.0.3",
 ]
+
+[project.urls]
+Repository = "https://github.com/stfngrt/t3rig"
+Documentation = "https://stfngrt.github.io/t3rig/"
+Issues = "https://github.com/stfngrt/t3rig/issues"
+Changelog = "https://github.com/stfngrt/t3rig/blob/main/CHANGELOG.md"
 
 [project.scripts]
 t3rig = "t3rig.cli:main"

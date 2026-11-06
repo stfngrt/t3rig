@@ -1,4 +1,4 @@
-<img src="assets/icon.svg" width="64" height="64" alt="">
+<img src="https://raw.githubusercontent.com/stfngrt/t3rig/main/assets/icon.svg" width="64" height="64" alt="">
 
 # t3rig
 
@@ -16,17 +16,22 @@ Status: early, simple version. It has been run on a two-seat Claude rig.
 Requires [uv](https://docs.astral.sh/uv/) and a running T3 Code with the `t3` CLI.
 
 ```sh
-git clone https://github.com/stfngrt/t3rig
-cd t3rig
-uv run t3rig --version
+uv tool install 't3rig[serve]'   # with the status page, which `t3rig run` needs
+t3rig --version
 ```
+
+`uv tool install t3rig` installs it without the status page (`run` and `serve`). It needs Python
+3.13; add `--python 3.13` if uv picks an older one. To work on t3rig itself, clone the repository
+and use `uv run t3rig` there.
 
 ## Quick start
 
+With a rig spec, such as [`examples/two-seat/rig.yaml`](https://github.com/stfngrt/t3rig/blob/main/examples/two-seat/rig.yaml):
+
 ```sh
-uv run t3rig validate examples/two-seat/rig.yaml   # check the spec; starts nothing
-uv run t3rig run examples/two-seat/rig.yaml        # start the seats and keep them going
-uv run t3rig send examples/two-seat/rig.yaml dev.impl "Hello"   # in another terminal
+t3rig validate rig.yaml               # check the spec; starts nothing
+t3rig run rig.yaml                    # start the seats and keep them going
+t3rig send rig.yaml dev.impl "Hello"  # in another terminal
 ```
 
 ## Docs
@@ -47,7 +52,7 @@ uv run t3rig send examples/two-seat/rig.yaml dev.impl "Hello"   # in another ter
 `rigs/self` develops t3rig with t3rig. Its seats, and anyone changing the code, should read these
 in the repo:
 
-- [`docs/development.md`](docs/development.md): the checks to run, the docs build, and how the self
+- [`docs/development.md`](https://github.com/stfngrt/t3rig/blob/main/docs/development.md): the checks to run, the docs build, and how the self
   rig works
-- [`docs/glossary.md`](docs/glossary.md): the project's terms
-- [`docs/adr/`](docs/adr/index.md): decisions already made
+- [`docs/glossary.md`](https://github.com/stfngrt/t3rig/blob/main/docs/glossary.md): the project's terms
+- [`docs/adr/`](https://github.com/stfngrt/t3rig/blob/main/docs/adr/index.md): decisions already made

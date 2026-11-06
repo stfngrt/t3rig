@@ -4,7 +4,7 @@
 live, read-only status page in the browser.
 
 ```sh
-uv sync --extra serve       # in the t3rig checkout; plain `uv sync` includes it for development
+uv tool install 't3rig[serve]'   # or in a t3rig checkout: uv sync --extra serve
 t3rig serve rigs/self/rig.yaml
 ```
 

@@ -35,8 +35,8 @@ target with `gh repo view --json nameWithOwner`.
 ## Labels
 
 The labels are in `docs/agents/triage-labels.md`. In short, four labels are the whole state set:
-`dev.pm` writes tickets and labels them `needs-approval`, only the operator adds `rig-queue` (the
-only approval), `dev.lead` adds `in-progress` when it takes a `rig-queue` issue, in number order, and
+`dev.pm` writes tickets and labels them `needs-approval`, the operator, or `dev.pm` on their word, adds
+`rig-queue` (the only approval), `dev.lead` adds `in-progress` when it takes a `rig-queue` issue, in number order, and
 `needs-answer` marks questions for the operator. There is no `blocked` label.
 
 ## Pull requests

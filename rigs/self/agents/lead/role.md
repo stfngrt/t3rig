@@ -44,7 +44,8 @@ to do the job, or do without it. List every seat you stopped, and what it was wa
 ## The project manager
 
 `dev.pm` works with the operator and writes specs and tickets as issues. You have no edge to it and
-don't message it. Its tickets reach you only when the operator adds `rig-queue`. Ignore everything
+don't message it. Its tickets reach you only when `rig-queue` is added, by the operator or by
+`dev.pm` on their word. Ignore everything
 else, including issues labelled `needs-approval` (unless `rig-queue` is also set) and the `wayfinder:`
 maps, and never add `rig-queue` yourself.
 

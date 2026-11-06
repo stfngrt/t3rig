@@ -6,7 +6,7 @@ because its state machine would add labels this rig doesn't use).
 
 | Role in the skills | Label in this repo | Meaning |
 | --- | --- | --- |
-| `ready-for-agent` | `needs-approval` | A ticket or spec `dev.pm` has finished and the operator hasn't approved. It does not reach `dev.lead` until the operator adds `rig-queue` |
+| `ready-for-agent` | `needs-approval` | A ticket or spec `dev.pm` has finished and the operator hasn't approved. It does not reach `dev.lead` until the operator, or `dev.pm` on their word, adds `rig-queue` |
 | `needs-info` | `needs-answer` | A seat is waiting on the operator's answer to a question in a comment |
 | `needs-triage`, `ready-for-human` | none | Not used |
 | `wontfix` | `wontfix` (the GitHub default) | Used only when closing without action, with a comment |
@@ -33,4 +33,4 @@ issue, it removes `needs-approval` in the same edit that adds `in-progress`.
 `t3rig watch` pings `dev.lead` when an issue gains `rig-queue`, and the seat that asked when
 `needs-answer` is removed (see `docs/design/planning.md`). An answered lead question resumes without
 `rig-queue`: `dev.lead` adds `in-progress` back and continues the issue. To deny or cancel, the
-operator closes the issue.
+operator, or `dev.pm` on their word, closes the issue.

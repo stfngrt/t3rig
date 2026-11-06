@@ -8,6 +8,7 @@ from t3rig.cli import _ps
 from t3rig.rig import RigError
 from t3rig.spec import Edge, Rig, Seat, TrackerSettings
 from t3rig.t3 import T3Error
+from t3rig.threads import MemoryT3
 from t3rig.tracker import Issue, TrackerError
 from t3rig.watch import (
     Watcher,
@@ -19,42 +20,6 @@ from t3rig.watch import (
     watch,
     watch_running,
 )
-
-
-class FakeT3:
-    def __init__(self) -> None:
-        self.threads: dict[str, dict[str, Any]] = {}
-        self.sent: list[tuple[str, str]] = []
-        self.shown: list[str] = []
-        self.send_error: Exception | None = None
-        self.reply = "all done"
-        self.role = "assistant"
-
-    def set(self, title: str, run: int, status: str = "completed", pending: int = 0) -> None:
-        self.threads[title] = {
-            "threadId": f"id-{title}",
-            "title": title,
-            "status": status,
-            "latestRunId": f"run{run}",
-            "link": f"http://t3/{title}",
-            "runCount": run,
-            "pendingRequestCount": pending,
-        }
-
-    def list_threads(self, project: str) -> list[dict[str, Any]]:
-        return list(self.threads.values())
-
-    def show_thread(self, thread_id: str, messages: int = 1) -> dict[str, Any]:
-        self.shown.append(thread_id)
-        thread = next(t for t in self.threads.values() if t["threadId"] == thread_id)
-        return {"thread": thread, "messages": [{"role": self.role, "text": self.reply}]}
-
-    def send(self, thread_id: str, message: str, wait: bool = False) -> str:
-        if self.send_error:
-            raise self.send_error
-        self.sent.append((thread_id, message))
-        return "Sent."
-
 
 LEAD, IMPL, QA = "dev-lead@r", "dev-impl@r", "dev-qa@r"
 
@@ -71,28 +36,36 @@ def rig(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Rig:
     return Rig(name="r", path=tmp_path / "rig.yaml", seats=seats, edges=edges)
 
 
-def make_watcher(rig: Rig, t3: FakeT3, connect: Any = None) -> tuple[Watcher, list[str]]:
+def make_watcher(rig: Rig, t3: MemoryT3) -> tuple[Watcher, list[str]]:
     lines: list[str] = []
-    return Watcher(rig, t3, state_path(rig), lines.append, connect), lines
+    return Watcher(rig, t3, state_path(rig), lines.append), lines
 
 
-class ActivityTools:
-    def __init__(self, pages: list[dict[str, Any]]) -> None:
-        self.pages = pages
-        self.calls: list[dict[str, Any]] = []
+def fake_t3() -> MemoryT3:
+    return MemoryT3(access_level=None)  # Not signed in to /mcp unless a test says so.
 
-    def call(self, tool: str, **arguments: Any) -> Any:
-        self.calls.append(arguments)
-        return self.pages.pop(0)
+
+def put(t3: MemoryT3, title: str, run: int, status: str = "completed", pending: int = 0) -> None:
+    """A seat's thread after `run` runs, with a reply if it has none yet."""
+    t3.put(
+        title,
+        status=status,
+        latestRunId=f"run{run}",
+        link=f"http://t3/{title}",
+        runCount=run,
+        pendingRequestCount=pending,
+    )
+    if f"id-{title}" not in t3.messages:
+        t3.say(f"id-{title}", "all done")
 
 
 def approval(status: str, text: str) -> dict[str, str]:
     return {"type": "approval_request", "status": status, "text": text}
 
 
-def started(t3: FakeT3) -> None:
+def started(t3: MemoryT3) -> None:
     for title in (LEAD, IMPL, QA):
-        t3.set(title, 1)
+        put(t3, title, 1)
 
 
 def test_dispatchers_come_from_delegates_to_edges(rig: Rig) -> None:
@@ -100,21 +73,21 @@ def test_dispatchers_come_from_delegates_to_edges(rig: Rig) -> None:
 
 
 def test_finished_run_pings_dispatcher_once(rig: Rig) -> None:
-    t3 = FakeT3()
+    t3 = fake_t3()
     started(t3)
     watcher, lines = make_watcher(rig, t3)
     watcher.tick()
     assert t3.sent == []
 
-    t3.set(IMPL, 2, status="running")
+    put(t3, IMPL, 2, status="running")
     watcher.tick()
     assert t3.sent == []
 
-    t3.set(IMPL, 2)
+    put(t3, IMPL, 2)
     watcher.tick()
     watcher.tick()
     assert len(t3.sent) == 1
-    thread_id, message = t3.sent[0]
+    thread_id, message, _ = t3.sent[0]
     assert thread_id == f"id-{LEAD}"
     assert message.startswith("From: t3rig watch\nTo: dev.lead\n---\n")
     assert 'dev.impl finished a run (completed). Last reply: "all done"' in message
@@ -123,12 +96,12 @@ def test_finished_run_pings_dispatcher_once(rig: Rig) -> None:
 
 
 def test_seats_changing_together_share_one_ping(rig: Rig) -> None:
-    t3 = FakeT3()
+    t3 = fake_t3()
     started(t3)
     watcher, lines = make_watcher(rig, t3)
     watcher.tick()
-    t3.set(IMPL, 2)
-    t3.set(QA, 2, status="failed")
+    put(t3, IMPL, 2)
+    put(t3, QA, 2, status="failed")
     watcher.tick()
     assert len(t3.sent) == 1
     assert (
@@ -137,81 +110,81 @@ def test_seats_changing_together_share_one_ping(rig: Rig) -> None:
 
 
 def test_first_run_reply_does_not_ping(rig: Rig) -> None:
-    t3 = FakeT3()
-    t3.set(LEAD, 1)
-    t3.set(IMPL, 1, status="running")
+    t3 = fake_t3()
+    put(t3, LEAD, 1)
+    put(t3, IMPL, 1, status="running")
     watcher, _ = make_watcher(rig, t3)
     watcher.tick()
-    t3.set(IMPL, 1)
+    put(t3, IMPL, 1)
     watcher.tick()
     assert t3.sent == []
 
 
 def test_history_before_watching_does_not_ping(rig: Rig) -> None:
-    t3 = FakeT3()
-    t3.set(LEAD, 1)
-    t3.set(IMPL, 5)
+    t3 = fake_t3()
+    put(t3, LEAD, 1)
+    put(t3, IMPL, 5)
     watcher, _ = make_watcher(rig, t3)
     watcher.tick()
     assert t3.sent == []
 
 
 def test_run_already_going_when_watching_starts_pings(rig: Rig) -> None:
-    t3 = FakeT3()
-    t3.set(LEAD, 1)
-    t3.set(IMPL, 5, status="running")
+    t3 = fake_t3()
+    put(t3, LEAD, 1)
+    put(t3, IMPL, 5, status="running")
     watcher, _ = make_watcher(rig, t3)
     watcher.tick()
-    t3.set(IMPL, 5)
+    put(t3, IMPL, 5)
     watcher.tick()
     assert len(t3.sent) == 1
 
 
 def test_needs_input_pings_once_per_request(rig: Rig) -> None:
-    t3 = FakeT3()
+    t3 = fake_t3()
     started(t3)
     watcher, _ = make_watcher(rig, t3)
     watcher.tick()
 
-    t3.set(IMPL, 2, status="running", pending=1)
+    put(t3, IMPL, 2, status="running", pending=1)
     watcher.tick()
     watcher.tick()
     assert len(t3.sent) == 1 and "dev.impl needs input" in t3.sent[0][1]
 
-    t3.set(IMPL, 2, status="running")
+    put(t3, IMPL, 2, status="running")
     watcher.tick()
-    t3.set(IMPL, 2, status="running", pending=1)
+    put(t3, IMPL, 2, status="running", pending=1)
     watcher.tick()
     assert len(t3.sent) == 2
 
 
 def test_stuck_seat_with_no_dispatcher_alerts_a_person(rig: Rig) -> None:
-    t3 = FakeT3()
+    t3 = fake_t3()
     started(t3)
     watcher, lines = make_watcher(rig, t3)
     watcher.tick()
-    t3.set(LEAD, 2, status="running", pending=1)
+    put(t3, LEAD, 2, status="running", pending=1)
     watcher.tick()
     assert t3.sent == []
     assert lines[0].startswith("ALERT: dev.lead needs input")
 
 
 def test_dispatcher_finishing_pings_nobody(rig: Rig) -> None:
-    t3 = FakeT3()
+    t3 = fake_t3()
     started(t3)
     watcher, lines = make_watcher(rig, t3)
     watcher.tick()
-    t3.set(LEAD, 2)
+    put(t3, LEAD, 2)
     watcher.tick()
     assert t3.sent == [] and lines == []
 
 
 def test_failed_ping_retries_then_alerts(rig: Rig) -> None:
-    t3 = FakeT3()
+    t3 = fake_t3()
     started(t3)
     watcher, lines = make_watcher(rig, t3)
     watcher.tick()
-    t3.set(IMPL, 2)
+    put(t3, IMPL, 2)
     t3.send_error = T3Error("server down")
     for _ in range(3):
         watcher.tick()
@@ -225,11 +198,11 @@ def test_failed_ping_retries_then_alerts(rig: Rig) -> None:
 
 
 def test_restart_neither_repeats_nor_misses(rig: Rig) -> None:
-    t3 = FakeT3()
+    t3 = fake_t3()
     started(t3)
     watcher, _ = make_watcher(rig, t3)
     watcher.tick()
-    t3.set(IMPL, 2)
+    put(t3, IMPL, 2)
     watcher.tick()
     assert len(t3.sent) == 1
 
@@ -237,30 +210,30 @@ def test_restart_neither_repeats_nor_misses(rig: Rig) -> None:
     restarted.tick()
     assert len(t3.sent) == 1
 
-    t3.set(QA, 2)
+    put(t3, QA, 2)
     again, _ = make_watcher(rig, t3)
     again.tick()
     assert len(t3.sent) == 2 and "dev.qa finished" in t3.sent[1][1]
 
 
 def test_idle_unchanged_seats_skip_the_slow_show_call(rig: Rig) -> None:
-    t3 = FakeT3()
+    t3 = fake_t3()
     started(t3)
     watcher, _ = make_watcher(rig, t3)
     watcher.tick()
-    t3.shown.clear()
+    t3.read.clear()
     watcher.tick()
-    assert t3.shown == []
+    assert t3.read == []
 
 
 def test_watch_refuses_rig_without_dispatchers(rig: Rig, tmp_path: Path) -> None:
     bare = Rig(name="b", path=tmp_path / "b.yaml", seats=rig.seats, edges=())
     with pytest.raises(RigError, match="nobody to ping"):
-        watch(bare, FakeT3(), 1, once=True)
+        watch(bare, fake_t3(), 1, once=True)
 
 
 def test_watch_survives_t3_errors(rig: Rig) -> None:
-    t3 = FakeT3()
+    t3 = fake_t3()
 
     def fail(project: str) -> list[dict[str, Any]]:
         raise T3Error("server down")
@@ -277,12 +250,12 @@ def test_excerpt_is_one_bounded_line() -> None:
 
 
 def test_usage_limit_says_so_and_alerts_a_person(rig: Rig) -> None:
-    t3 = FakeT3()
+    t3 = fake_t3()
     started(t3)
     watcher, lines = make_watcher(rig, t3)
     watcher.tick()
-    t3.reply = "You've hit your 5-hour limit · resets 5:50pm (Europe/Berlin)"
-    t3.set(IMPL, 2, status="failed")
+    t3.say(f"id-{IMPL}", "You've hit your 5-hour limit · resets 5:50pm (Europe/Berlin)")
+    put(t3, IMPL, 2, status="failed")
     watcher.tick()
     assert "dev.impl stopped at a usage limit" in t3.sent[0][1]
     assert "finished a run" not in t3.sent[0][1]
@@ -291,30 +264,31 @@ def test_usage_limit_says_so_and_alerts_a_person(rig: Rig) -> None:
 
 
 def test_ordinary_failure_and_limit_talk_in_a_good_run_are_not_usage_limits(rig: Rig) -> None:
-    t3 = FakeT3()
+    t3 = fake_t3()
     started(t3)
     watcher, lines = make_watcher(rig, t3)
     watcher.tick()
-    t3.reply = "tests failed"
-    t3.set(IMPL, 2, status="failed")
+    t3.say(f"id-{IMPL}", "tests failed")
+    put(t3, IMPL, 2, status="failed")
     watcher.tick()
     assert "dev.impl finished a run (failed)" in t3.sent[0][1]
-    t3.reply = "I added the rate limit you asked for"
-    t3.set(QA, 2)
+    t3.say(f"id-{QA}", "I added the rate limit you asked for")
+    put(t3, QA, 2)
     watcher.tick()
     assert "dev.qa finished a run (completed)" in t3.sent[1][1]
     assert not any(line.startswith("ALERT") for line in lines)
 
 
 def test_needs_input_ping_names_the_command_and_how_to_stop(rig: Rig) -> None:
-    t3 = FakeT3()
+    t3 = fake_t3()
     started(t3)
-    tools = ActivityTools(
-        [{"items": [approval("completed", "old"), approval("waiting", "pytest\n-q")]}]
-    )
-    watcher, _ = make_watcher(rig, t3, lambda: (tools, "auto"))
+    t3.access_level = "auto"
+    t3.activity_pages = [
+        {"items": [approval("completed", "old"), approval("waiting", "pytest\n-q")]}
+    ]
+    watcher, _ = make_watcher(rig, t3)
     watcher.tick()
-    t3.set(IMPL, 2, status="running", pending=1)
+    put(t3, IMPL, 2, status="running", pending=1)
     watcher.tick()
     assert 'Waiting on: "pytest -q"' in t3.sent[0][1]
     assert "You can't approve this" in t3.sent[0][1]
@@ -322,37 +296,33 @@ def test_needs_input_ping_names_the_command_and_how_to_stop(rig: Rig) -> None:
 
 
 def test_needs_input_still_pings_without_the_command(rig: Rig) -> None:
-    def not_signed_in() -> Any:
-        raise T3Error("not signed in")
-
-    t3 = FakeT3()
+    t3 = fake_t3()  # Not signed in, so what it waits on can't be read.
     started(t3)
-    watcher, _ = make_watcher(rig, t3, not_signed_in)
+    watcher, _ = make_watcher(rig, t3)
     watcher.tick()
-    t3.set(IMPL, 2, status="running", pending=1)
+    put(t3, IMPL, 2, status="running", pending=1)
     watcher.tick()
     assert "dev.impl needs input" in t3.sent[0][1] and "Waiting on" not in t3.sent[0][1]
 
 
 def test_waiting_approval_reads_recent_pages_and_ignores_answered_ones() -> None:
-    tools = ActivityTools(
-        [
-            {"items": [approval("waiting", "first")], "hasMore": True, "nextPosition": 300},
-            {"items": [approval("completed", "done")], "hasMore": False},
-        ]
-    )
-    assert waiting_approval(tools, "t", 250) == "first"
-    assert tools.calls[0]["afterPosition"] == 150 and tools.calls[1]["afterPosition"] == 300
-    assert waiting_approval(ActivityTools([{"items": []}]), "t", 3) is None
+    t3 = MemoryT3()
+    t3.activity_pages = [
+        {"items": [approval("waiting", "first")], "hasMore": True, "nextPosition": 300},
+        {"items": [approval("completed", "done")], "hasMore": False},
+    ]
+    assert waiting_approval(t3, "t", 250) == "first"
+    assert [a["afterPosition"] for _, a in t3.actions] == [150, 300]
+    assert waiting_approval(MemoryT3(), "t", 3) is None
 
 
 def test_stopped_run_says_it_has_no_result(rig: Rig) -> None:
-    t3 = FakeT3()
+    t3 = fake_t3()
     started(t3)
     watcher, _ = make_watcher(rig, t3)
     watcher.tick()
-    t3.reply = "partial thoughts"
-    t3.set(IMPL, 2, status="interrupted")
+    t3.say(f"id-{IMPL}", "partial thoughts")
+    put(t3, IMPL, 2, status="interrupted")
     watcher.tick()
     message = t3.sent[0][1]
     assert "dev.impl's run was stopped before it finished (interrupted)" in message
@@ -361,12 +331,12 @@ def test_stopped_run_says_it_has_no_result(rig: Rig) -> None:
 
 
 def test_message_sent_to_a_seat_is_not_shown_as_its_reply(rig: Rig) -> None:
-    t3 = FakeT3()
+    t3 = fake_t3()
     started(t3)
     watcher, _ = make_watcher(rig, t3)
     watcher.tick()
-    t3.reply, t3.role = "Please review the diff", "user"
-    t3.set(IMPL, 2)
+    t3.say(f"id-{IMPL}", "Please review the diff", "user")
+    put(t3, IMPL, 2)
     watcher.tick()
     assert "dev.impl finished a run (completed)." in t3.sent[0][1]
     assert "Last reply" not in t3.sent[0][1] and "Please review" not in t3.sent[0][1]
@@ -399,11 +369,11 @@ def tracked(rig: Rig) -> Rig:
     )
 
 
-def issue_watcher(rig: Rig) -> tuple[Watcher, FakeT3, FakeTracker, list[str]]:
-    t3, tracker, lines = FakeT3(), FakeTracker(), []
+def issue_watcher(rig: Rig) -> tuple[Watcher, MemoryT3, FakeTracker, list[str]]:
+    t3, tracker, lines = fake_t3(), FakeTracker(), []
     started(t3)
     rig = tracked(rig)
-    return Watcher(rig, t3, state_path(rig), lines.append, None, tracker), t3, tracker, lines
+    return Watcher(rig, t3, state_path(rig), lines.append, tracker), t3, tracker, lines
 
 
 def test_queued_issue_pings_the_queue_seat_once(rig: Rig) -> None:
@@ -416,7 +386,7 @@ def test_queued_issue_pings_the_queue_seat_once(rig: Rig) -> None:
     watcher.poll_tracker()
     watcher.poll_tracker()
     assert len(t3.sent) == 1
-    thread_id, message = t3.sent[0]
+    thread_id, message, _ = t3.sent[0]
     assert thread_id == f"id-{LEAD}"
     assert "queued with `rig-queue`: https://t/issues/5" in message
     assert lines == ["pinged dev.lead: #5"]
@@ -471,7 +441,7 @@ def test_answer_pings_the_seat_that_signed_the_question(rig: Rig) -> None:
     watcher.poll_tracker()
     watcher.poll_tracker()
     assert len(t3.sent) == 1
-    thread_id, message = t3.sent[0]
+    thread_id, message, _ = t3.sent[0]
     assert thread_id == f"id-{IMPL}"
     assert "`needs-answer` was removed: https://t/issues/5" in message
 
@@ -483,7 +453,7 @@ def test_answer_without_a_signed_question_pings_the_queue_seat(rig: Rig) -> None
     watcher.poll_tracker()
     tracker.labels[5] = set()
     watcher.poll_tracker()
-    assert [thread for thread, _ in t3.sent] == [f"id-{LEAD}"]
+    assert [sent[0] for sent in t3.sent] == [f"id-{LEAD}"]
 
 
 def test_no_answer_ping_without_prior_state_or_for_closed_issues(rig: Rig) -> None:
@@ -515,7 +485,7 @@ def test_issue_state_survives_a_restart(rig: Rig) -> None:
     tracker.labels[5] = {"rig-queue", "needs-answer"}
     tracker.notes[5] = ["🤖 dev.impl (t3rig)\nQuestions"]
     watcher.poll_tracker()
-    again = Watcher(watcher.rig, t3, watcher.path, print, None, tracker)
+    again = Watcher(watcher.rig, t3, watcher.path, print, tracker)
     again.poll_tracker()
     assert len(t3.sent) == 1
     tracker.labels[5] = {"rig-queue"}
@@ -524,7 +494,7 @@ def test_issue_state_survives_a_restart(rig: Rig) -> None:
 
 
 def test_watch_polls_the_tracker_on_its_own_interval(rig: Rig) -> None:
-    t3, tracker = FakeT3(), FakeTracker()
+    t3, tracker = fake_t3(), FakeTracker()
     started(t3)
     polls: list[int] = []
     tracker.open_issues = lambda: polls.append(1) or []  # type: ignore[method-assign]
@@ -549,7 +519,7 @@ def test_watch_polls_the_tracker_on_its_own_interval(rig: Rig) -> None:
 
 
 def test_watch_survives_tracker_errors(rig: Rig) -> None:
-    t3, tracker = FakeT3(), FakeTracker()
+    t3, tracker = fake_t3(), FakeTracker()
     tracker.error = TrackerError("gh exited 1")
     lines: list[str] = []
     watch(tracked(rig), t3, 1, once=True, out=lines.append, make_tracker=lambda s: tracker)
@@ -559,7 +529,7 @@ def test_watch_survives_tracker_errors(rig: Rig) -> None:
 def test_tracker_alone_is_enough_to_watch(rig: Rig, tmp_path: Path) -> None:
     settings = tracked(rig).tracker
     bare = Rig(name="b", path=tmp_path / "b.yaml", seats=rig.seats, edges=(), tracker=settings)
-    watch(bare, FakeT3(), 1, once=True, make_tracker=lambda s: FakeTracker())
+    watch(bare, fake_t3(), 1, once=True, make_tracker=lambda s: FakeTracker())
 
 
 def test_watch_running_follows_the_lock_and_creates_nothing(rig: Rig) -> None:
@@ -572,7 +542,7 @@ def test_watch_running_follows_the_lock_and_creates_nothing(rig: Rig) -> None:
 
 
 def test_ps_says_whether_watch_is_running(rig: Rig, capsys: pytest.CaptureFixture[str]) -> None:
-    t3 = FakeT3()
+    t3 = fake_t3()
     started(t3)
     _ps(rig, t3, as_json=False)
     assert capsys.readouterr().out.splitlines()[-1] == "watch: not running, has never run"

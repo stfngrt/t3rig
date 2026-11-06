@@ -22,18 +22,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from t3rig.rig import (
-    BUSY_STATUSES,
-    RigError,
-    SeatStatus,
-    Tools,
-    connect_mcp,
-    envelope,
-    seat_statuses,
-    t3rig_command,
-)
+from t3rig.rig import envelope, t3rig_command
 from t3rig.spec import Rig
-from t3rig.t3 import T3Cli, T3Error
+from t3rig.t3 import T3Error
+from t3rig.threads import T3, RigError, SeatThread, is_busy, seat_threads, thread_ids
 from t3rig.tracker import Issue, Tracker, TrackerError, tracker_for
 
 EXCERPT_CHARS = 120
@@ -116,18 +108,12 @@ def _thread_line(prefix: str, thread: dict[str, Any]) -> str:
     return f"- {prefix} Thread {thread['threadId']}: {thread.get('link', '')}".rstrip()
 
 
-def waiting_approval(tools: Tools, thread_id: str, item_count: int) -> str | None:
+def waiting_approval(t3: T3, thread_id: str, item_count: int) -> str | None:
     """The newest approval a thread is waiting on, read from its activity, oldest item first."""
     after = max(item_count - ACTIVITY_WINDOW, 0)
     found = None
     while True:
-        page = tools.call(
-            "t3_thread_read",
-            threadId=thread_id,
-            view="activity",
-            afterPosition=after,
-            limit=ACTIVITY_WINDOW,
-        )
+        page = t3.activity(thread_id, after, ACTIVITY_WINDOW)
         for item in page.get("items", []):
             if item.get("type") == "approval_request" and item.get("status") == "waiting":
                 found = item.get("text")
@@ -138,10 +124,10 @@ def waiting_approval(tools: Tools, thread_id: str, item_count: int) -> str | Non
 
 def _check_seat(
     rig: Rig,
-    status: SeatStatus,
+    status: SeatThread,
     entry: dict[str, Any] | None,
     dispatcher: str | None,
-    t3: T3Cli,
+    t3: T3,
     waiting_on: Callable[[str, int], str | None],
 ) -> tuple[list[Event], dict[str, Any]]:
     """What happened on a seat since it was last checked, and the updates needing no ping."""
@@ -150,7 +136,7 @@ def _check_seat(
     if thread is None or run is None:
         return [], {}
     seat = status.seat.qualified_id
-    busy = thread.get("status") in BUSY_STATUSES
+    busy = is_busy(thread)
     first_seen = entry is None
     known: dict[str, Any] = entry or {"run": None, "asked": None}
     if not busy and run == known["run"]:
@@ -230,16 +216,15 @@ class Watcher:
     def __init__(
         self,
         rig: Rig,
-        t3: T3Cli,
+        t3: T3,
         path: Path,
         out: Callable[[str], None] = print,
-        connect: Callable[[], tuple[Tools, str]] | None = None,
         tracker: Tracker | None = None,
         tracker_interval: float = 60,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.rig, self.t3, self.path, self.out = rig, t3, path, out
-        self.connect, self.tracker = connect, tracker
+        self.tracker = tracker
         self.tracker_interval, self.clock = tracker_interval, clock
         self.next_poll = clock()
         self.issues: list[Issue] = []  # Open issues from the last tracker poll.
@@ -249,11 +234,8 @@ class Watcher:
 
     def _waiting_on(self, thread_id: str, item_count: int) -> str | None:
         """What a seat is waiting on. A ping without it is still useful, so errors are dropped."""
-        if self.connect is None:
-            return None
         try:
-            tools, _ = self.connect()
-            return waiting_approval(tools, thread_id, item_count)
+            return waiting_approval(self.t3, thread_id, item_count)
         except T3Error:
             return None
 
@@ -349,14 +331,13 @@ class Watcher:
                 assert event.dispatcher is not None
                 by_seat.setdefault(event.dispatcher, []).append(event)
         if by_seat:
-            statuses = seat_statuses(self.rig, self.t3)
-            threads = {s.seat.qualified_id: s.thread["threadId"] for s in statuses if s.thread}
+            threads = thread_ids(seat_threads(self.rig, self.t3))
             for seat, events in by_seat.items():
                 self._deliver(seat, events, threads, ISSUE_CLOSING)
         save_state(self.path, self.state)
 
     def tick(self) -> None:
-        statuses = seat_statuses(self.rig, self.t3)
+        statuses = seat_threads(self.rig, self.t3)
         by_dispatcher: dict[str, list[Event]] = {}
         for status in statuses:
             dispatcher = self.dispatchers.get(status.seat.qualified_id)
@@ -373,7 +354,7 @@ class Watcher:
                     self._apply(event.session_name, event.updates)
                 else:
                     by_dispatcher.setdefault(event.dispatcher, []).append(event)
-        threads = {s.seat.qualified_id: s.thread["threadId"] for s in statuses if s.thread}
+        threads = thread_ids(statuses)
         for dispatcher, events in by_dispatcher.items():
             self._deliver(dispatcher, events, threads)
         self.state["updated_at"] = datetime.now(UTC).isoformat()
@@ -427,7 +408,7 @@ def single_watcher(path: Path) -> Iterator[None]:
 
 def watch(
     rig: Rig,
-    t3: T3Cli,
+    t3: T3,
     interval: float,
     once: bool = False,
     out: Callable[[str], None] = print,
@@ -441,7 +422,7 @@ def watch(
     tracker = make_tracker(rig.tracker) if rig.tracker else None
     with single_watcher(path):
         watcher = Watcher(
-            rig, t3, path, out, connect_mcp, tracker, tracker_interval=tracker_interval, clock=clock
+            rig, t3, path, out, tracker, tracker_interval=tracker_interval, clock=clock
         )
         while True:
             watcher.step()

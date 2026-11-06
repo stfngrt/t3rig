@@ -3,44 +3,33 @@
 import shlex
 import sys
 import time
-from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 
-from t3rig.mcp import ACCESS_LEVELS, McpClient, load_credential
+from t3rig.mcp import ACCESS_LEVELS
 from t3rig.spec import Rig, Seat
-from t3rig.t3 import T3Cli, T3Error
+from t3rig.t3 import T3Error
+from t3rig.threads import (
+    BUSY_STATUSES,
+    NO_THREAD,
+    T3,
+    RigError,
+    SeatThread,
+    all_seat_threads,
+    earlier_thread,
+    is_busy,
+    seat_thread,
+    seat_threads,
+)
 
 PROVIDERS = {"claude-code": "claudeAgent", "codex": "codex"}
-BUSY_STATUSES = {"preparing", "queued", "starting", "running", "waiting"}
 # Seats are told to pass --from, so a send without it is taken to be from a person. An
 # unknown-sender label made a dispatcher tell a seat to disregard a person's instructions.
 DEFAULT_SENDER = "operator"
 EFFORT_OPTIONS = {"claude-code": "effort", "codex": "reasoningEffort"}
-
-
-class RigError(Exception):
-    """The rig can't do what was asked."""
-
-
-class Tools(Protocol):
-    def call(self, tool: str, **arguments: Any) -> Any: ...
-
-
-def connect_mcp() -> tuple[Tools, str]:
-    """A client for T3's /mcp tools and the access level it's signed in at."""
-    return McpClient.from_credential(), load_credential()["access"]
-
-
-@dataclass(frozen=True)
-class SeatStatus:
-    seat: Seat
-    session_name: str
-    thread: dict[str, Any] | None
-    duplicates: int = 0
 
 
 @dataclass(frozen=True)
@@ -50,27 +39,13 @@ class SendResult:
     error: str | None = None
 
 
-def seat_statuses(rig: Rig, t3: T3Cli) -> list[SeatStatus]:
-    threads: dict[str, dict[str, Any]] = {}
-    counts: Counter[str] = Counter()
-    for project in sorted({str(seat.cwd) for seat in rig.seats}):
-        for thread in t3.list_threads(project):
-            threads.setdefault(thread["title"], thread)  # Newest first, so the newest wins.
-            counts[thread["title"]] += 1
-    statuses = []
-    for seat in rig.seats:
-        name = rig.session_name(seat)
-        statuses.append(SeatStatus(seat, name, threads.get(name), max(counts[name] - 1, 0)))
-    return statuses
-
-
-def seat_rows(rig: Rig, t3: T3Cli) -> list[dict[str, Any]]:
+def seat_rows(rig: Rig, t3: T3) -> list[dict[str, Any]]:
     """Each seat's state for `ps`, including requests only `t3 thread show` reports."""
     rows = []
-    for status in seat_statuses(rig, t3):
+    for status in seat_threads(rig, t3):
         thread = status.thread or {}
         pending = 0
-        if thread.get("status") in BUSY_STATUSES:
+        if is_busy(thread):
             details = t3.show_thread(thread["threadId"], messages=0).get("thread", {})
             pending = details.get("pendingRequestCount", 0)
         rows.append(
@@ -148,20 +123,11 @@ def _needs_mcp(seat: Seat) -> bool:
     return seat.runtime_mode is not None or seat.effort is not None
 
 
-def _project_id(tools: Tools, directory: Path) -> str:
+def _project_id(t3: T3, directory: Path) -> str:
     """The T3 project holding this folder; the deepest one if several do."""
-    projects: list[dict[str, Any]] = []
-    cursor = None
-    while True:
-        args = {"limit": 100, **({"cursor": cursor} if cursor is not None else {})}
-        page = tools.call("t3_project_list", **args)
-        projects += page.get("projects", [])
-        cursor = page.get("nextCursor")
-        if cursor is None:
-            break
     holding = [
         p
-        for p in projects
+        for p in t3.projects()
         if p.get("workspaceRoot") and directory.is_relative_to(p["workspaceRoot"])
     ]
     if not holding:
@@ -169,17 +135,17 @@ def _project_id(tools: Tools, directory: Path) -> str:
     return max(holding, key=lambda p: len(p["workspaceRoot"]))["id"]
 
 
-def _archive_quietly(tools: Tools, thread_id: str) -> None:
+def _archive_quietly(t3: T3, thread_id: str) -> None:
     try:
-        tools.call("t3_thread_organize", action="archive", threadId=thread_id)
+        t3.archive(thread_id)
     except T3Error:
         pass  # The caller is already reporting the failure that led here.
 
 
-def _launch(rig: Rig, tools: Tools, t3: T3Cli, seat: Seat, status: SeatStatus) -> None:
+def _launch(rig: Rig, t3: T3, seat: Seat, status: SeatThread) -> None:
     """Launch idle, check T3 applied the settings, and only then send the first message."""
     arguments: dict[str, Any] = {
-        "projectId": _project_id(tools, seat.cwd),
+        "projectId": _project_id(t3, seat.cwd),
         "title": status.session_name,
     }
     option = EFFORT_OPTIONS[seat.runtime]
@@ -191,7 +157,7 @@ def _launch(rig: Rig, tools: Tools, t3: T3Cli, seat: Seat, status: SeatStatus) -
             "model": seat.model,
             **({"options": {option: seat.effort}} if seat.effort else {}),
         }
-    launched = tools.call("t3_thread_launch", **arguments)
+    launched = t3.launch(**arguments)
     thread_id = launched["threadId"]
     thread = t3.show_thread(thread_id, messages=0).get("thread", {})
     applied_options = launched.get("modelSelection", {}).get("options") or []
@@ -207,7 +173,7 @@ def _launch(rig: Rig, tools: Tools, t3: T3Cli, seat: Seat, status: SeatStatus) -
     ]
     for name, wanted, actual in checks:
         if wanted is not None and wanted != actual:
-            _archive_quietly(tools, thread_id)
+            _archive_quietly(t3, thread_id)
             raise RigError(
                 f"{seat.qualified_id}: wanted {name} {wanted}, but T3 applied {actual}; "
                 "archived the thread before it started"
@@ -215,7 +181,7 @@ def _launch(rig: Rig, tools: Tools, t3: T3Cli, seat: Seat, status: SeatStatus) -
     t3.send(thread_id, seat_brief(rig, seat))
 
 
-def _preflight(seats: list[Seat], connect: Callable[[], tuple[Tools, str]]) -> Tools | None:
+def _preflight(seats: list[Seat], t3: T3) -> None:
     """Refuse before starting anything, so a rig isn't left half up."""
     missing_model = [
         s.qualified_id for s in seats if not s.model and (s.runtime != "claude-code" or s.effort)
@@ -225,8 +191,8 @@ def _preflight(seats: list[Seat], connect: Callable[[], tuple[Tools, str]]) -> T
         raise RigError(f"these seats need a model for their runtime or effort: {missing_model}")
     restricted = [s for s in seats if _needs_mcp(s)]
     if not restricted:
-        return None
-    tools, access = connect()
+        return
+    access = t3.access()
     for seat in restricted:
         mode = seat.runtime_mode
         if mode and ACCESS_LEVELS.index(mode) > ACCESS_LEVELS.index(access):
@@ -234,25 +200,24 @@ def _preflight(seats: list[Seat], connect: Callable[[], tuple[Tools, str]]) -> T
                 f"{seat.qualified_id} needs {mode}, but you're signed in at {access}; "
                 f"run `t3rig login --access {mode}` if you want to allow that"
             )
-    return tools
 
 
-def up(rig: Rig, t3: T3Cli, connect: Callable[[], tuple[Tools, str]] = connect_mcp) -> list[str]:
+def up(rig: Rig, t3: T3) -> list[str]:
     """Start a thread for each seat without one. Safe to re-run. Returns status lines."""
     lines = []
     to_start = []
-    for status in seat_statuses(rig, t3):
+    for status in seat_threads(rig, t3):
         if status.thread is None:
             to_start.append(status)
         else:
             name = status.seat.qualified_id
             lines.append(f"{name}: already has thread {status.thread['threadId']}")
-    tools = _preflight([s.seat for s in to_start], connect)
+    _preflight([s.seat for s in to_start], t3)
 
     for status in to_start:
         seat = status.seat
         if _needs_mcp(seat):
-            _launch(rig, tools, t3, seat, status)
+            _launch(rig, t3, seat, status)
         else:
             provider = PROVIDERS[seat.runtime] if seat.model else None
             t3.start_thread(
@@ -260,7 +225,7 @@ def up(rig: Rig, t3: T3Cli, connect: Callable[[], tuple[Tools, str]] = connect_m
             )
 
     started = {status.seat for status in to_start}
-    for status in seat_statuses(rig, t3):
+    for status in seat_threads(rig, t3):
         seat = status.seat
         if seat not in started:
             continue
@@ -279,58 +244,47 @@ def up(rig: Rig, t3: T3Cli, connect: Callable[[], tuple[Tools, str]] = connect_m
     return lines
 
 
-def down(
-    rig: Rig,
-    t3: T3Cli,
-    seat: str | None = None,
-    connect: Callable[[], tuple[Tools, str]] = connect_mcp,
-) -> tuple[list[str], bool]:
+def down(rig: Rig, t3: T3, seat: str | None = None) -> tuple[list[str], bool]:
     """Interrupt and archive seats' threads, keeping transcripts. Returns lines and success."""
     seats = select_seats(rig, seat, everyone=seat is None)
-    names = {rig.session_name(s): s.qualified_id for s in seats}
-    projects = sorted({str(s.cwd) for s in seats})
     # Older threads with a seat's title go too, or the next one would become the seat's thread.
-    threads = [t for p in projects for t in t3.list_threads(p) if t["title"] in names]
+    threads = all_seat_threads(rig, t3, seats)
     if not threads:
         return ["no threads to stop"], True
-    tools, _ = connect()
+    t3.access()  # Sign in first, so a missing sign-in is one error rather than one per thread.
     lines, ok = [], True
-    for thread in threads:
-        name, thread_id = names[thread["title"]], thread["threadId"]
+    for owner, thread in threads:
+        name, thread_id = owner.qualified_id, thread["threadId"]
         try:
-            if thread.get("status") in BUSY_STATUSES:
-                tools.call("t3_thread_interrupt", threadId=thread_id)
-            tools.call("t3_thread_organize", action="archive", threadId=thread_id)
+            if is_busy(thread):
+                t3.interrupt(thread_id)
+            t3.archive(thread_id)
             lines.append(f"{name}: archived {thread_id}")
         except T3Error as error:
             lines.append(f"{name}: couldn't stop {thread_id}: {error}")
             ok = False
-    still_listed = {t["threadId"] for p in projects for t in t3.list_threads(p)}
-    for thread in threads:
+    still_listed = {t["threadId"] for _, t in all_seat_threads(rig, t3, seats)}
+    for owner, thread in threads:
         if thread["threadId"] in still_listed and ok:
-            lines.append(f"{names[thread['title']]}: {thread['threadId']} is still active")
+            lines.append(f"{owner.qualified_id}: {thread['threadId']} is still active")
             ok = False
     return lines, ok
 
 
 def stop(
     rig: Rig,
-    t3: T3Cli,
+    t3: T3,
     seat: str,
-    connect: Callable[[], tuple[Tools, str]] = connect_mcp,
     sleep: Callable[[float], None] = time.sleep,
     wait_seconds: float = 30,
 ) -> str:
     """Interrupt a seat's current run, keeping its thread so it can be messaged again."""
     (chosen,) = select_seats(rig, seat)
-    thread = next(s.thread for s in seat_statuses(rig, t3) if s.seat == chosen)
-    if thread is None:
-        raise RigError(f"{chosen.qualified_id} has no thread; run `t3rig up` first")
-    if thread.get("status") not in BUSY_STATUSES:
+    thread = seat_thread(rig, t3, chosen)
+    if not is_busy(thread):
         return f"{chosen.qualified_id}: nothing to stop ({thread.get('status')})"
     thread_id = thread["threadId"]
-    tools, _ = connect()
-    tools.call("t3_thread_interrupt", threadId=thread_id, reason="Stopped with t3rig stop")
+    t3.interrupt(thread_id, reason="Stopped with t3rig stop")
     deadline = time.monotonic() + wait_seconds
     while True:
         status = t3.show_thread(thread_id, messages=0).get("thread", {}).get("status")
@@ -367,7 +321,7 @@ def select_seats(
 
 def send(
     rig: Rig,
-    t3: T3Cli,
+    t3: T3,
     seats: list[Seat],
     message: str,
     sender: str | None = None,
@@ -375,14 +329,14 @@ def send(
     wait: bool = False,
 ) -> list[SendResult]:
     """Message each seat. One seat failing doesn't stop the others."""
-    threads = {s.seat: s.thread for s in seat_statuses(rig, t3)}
+    threads = {s.seat: s.thread for s in seat_threads(rig, t3)}
     recipients = ", ".join(seat.qualified_id for seat in seats)
     body = message if raw else envelope(sender or DEFAULT_SENDER, recipients, message)
     results = []
     for seat in seats:
         thread = threads.get(seat)
         if thread is None:
-            results.append(SendResult(seat, error="no thread; run `t3rig up` first"))
+            results.append(SendResult(seat, error=NO_THREAD))
             continue
         try:
             results.append(SendResult(seat, t3.send(thread["threadId"], body, wait=wait)))
@@ -391,21 +345,13 @@ def send(
     return results
 
 
-def log(rig: Rig, t3: T3Cli, seat: str, messages: int, thread_id: str | None = None) -> str:
+def log(rig: Rig, t3: T3, seat: str, messages: int, thread_id: str | None = None) -> str:
     """A seat's latest messages, as `t3 thread show` prints them; or the earlier `thread_id`."""
     if messages < 1:
         raise RigError("--messages must be at least 1")
     (chosen,) = select_seats(rig, seat)
-    if thread_id is not None:
-        # An earlier thread isn't in `t3 thread list`, so its title is checked on the thread itself.
-        title = t3.show_thread(thread_id, messages=0).get("thread", {}).get("title")
-        if title != rig.session_name(chosen):
-            raise RigError(
-                f"thread {thread_id} is {title!r}, not {chosen.qualified_id}'s "
-                f"{rig.session_name(chosen)!r}"
-            )
-        return t3.thread_text(thread_id, messages)
-    thread = next(s.thread for s in seat_statuses(rig, t3) if s.seat == chosen)
-    if thread is None:
-        raise RigError(f"{chosen.qualified_id} has no thread; run `t3rig up` first")
-    return t3.thread_text(thread["threadId"], messages)
+    if thread_id is None:
+        thread_id = seat_thread(rig, t3, chosen)["threadId"]
+    else:
+        earlier_thread(rig, t3, chosen, thread_id)
+    return t3.thread_text(thread_id, messages)

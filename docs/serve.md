@@ -8,10 +8,27 @@ uv sync --extra serve       # in the t3rig checkout; plain `uv sync` includes it
 t3rig serve rigs/self/rig.yaml
 ```
 
-It prints the page's address, `http://127.0.0.1:8765/` by default (`--port`). It listens on
-localhost only and has no login, so don't expose it to other machines. It answers only requests
-addressed to `127.0.0.1` or `localhost`, so another website can't reach it by pointing its own
-domain name at your machine (DNS rebinding).
+It prints the page's address, `http://127.0.0.1:8765/` by default (`--port`). By default it listens
+on localhost only. It has no login. It answers only requests addressed to `127.0.0.1`, `localhost`
+or the `--host` address, so another website can't reach it by pointing its own domain name at your
+machine (DNS rebinding).
+
+## On the local network
+
+To open the page from another device, serve it on one of this machine's addresses with `--host`:
+
+```sh
+t3rig serve --host 192.168.5.10 rigs/self/rig.yaml   # then open http://192.168.5.10:8765/
+```
+
+```{warning}
+**Anyone who can reach that address can read the page.** There is no login and no token. The page
+shows each seat's latest message, which can hold private code, issue text or anything else a seat
+wrote. Use `--host` only on a network you trust.
+```
+
+`--host` takes one concrete address or name. A wildcard such as `0.0.0.0` or `::` is refused,
+because the Host check needs the one address the page is reached at.
 
 ## What it runs
 

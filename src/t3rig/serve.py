@@ -5,6 +5,7 @@ The `watch` loop runs as an asyncio task. The page reads the same sources as `ps
 """
 
 import asyncio
+import ipaddress
 from collections import deque
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
@@ -20,7 +21,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, PackageLoader
 
-from t3rig.rig import ago, connect_mcp, seat_rows
+from t3rig.rig import RigError, ago, connect_mcp, seat_rows
 from t3rig.spec import Rig
 from t3rig.t3 import T3Cli, T3Error
 from t3rig.tracker import Issue, Tracker, tracker_for
@@ -35,7 +36,7 @@ from t3rig.watch import (
     state_path,
 )
 
-HOST = "127.0.0.1"  # No login, so never reachable from another machine.
+HOST = "127.0.0.1"  # No login, so only reachable from another machine with `--host`.
 ALLOWED_HOSTS = [HOST, "localhost"]
 MAX_EVENTS = 200
 KEEPALIVE_SECONDS = 15
@@ -199,7 +200,20 @@ class RigServer:
                 yield ": keepalive\n\n"
 
 
-def create_app(server: RigServer) -> FastAPI:
+def check_host(host: str) -> None:
+    """Refuse a wildcard bind: the Host check needs the one address the page is reached at."""
+    try:
+        wildcard = ipaddress.ip_address(host).is_unspecified
+    except ValueError:
+        wildcard = False  # A name, such as a machine's .local name.
+    if wildcard or not host:
+        raise RigError(
+            f"--host {host!r}: give the one address to serve on, such as 192.168.5.10, "
+            "not one that listens everywhere"
+        )
+
+
+def create_app(server: RigServer, host: str = HOST) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         server.loop = asyncio.get_running_loop()
@@ -213,7 +227,11 @@ def create_app(server: RigServer) -> FastAPI:
 
     app = FastAPI(title=f"t3rig: {server.rig.name}", lifespan=lifespan)
     # Refuses DNS rebinding: another site's page resolving its name to 127.0.0.1. Ports are ignored.
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
+    name = host.lower()
+    # Starlette keeps the brackets of an IPv6 Host header, such as "[::1]:8765".
+    extra = [f"[{name}]"] if ":" in name else [name]
+    allowed = ALLOWED_HOSTS + [h for h in extra if h not in ALLOWED_HOSTS]
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed)
     static = Path(__file__).parent / "static"
     app.mount("/static", StaticFiles(directory=static), name="static")
 
@@ -255,12 +273,19 @@ class _Uvicorn(uvicorn.Server):
         super().handle_exit(sig, frame)
 
 
-def serve(rig: Rig, t3: T3Cli, port: int, interval: float, tracker_interval: float) -> None:
+def serve(
+    rig: Rig, t3: T3Cli, port: int, interval: float, tracker_interval: float, host: str = HOST
+) -> None:
+    check_host(host)
     with single_watcher(state_path(rig)):  # Refuses if `t3rig watch` or another serve runs.
         # Built under the lock, so the watch state is read only once nobody else writes it.
         server = RigServer(
             rig, t3, interval, tracker_interval, out=lambda line: print(line, flush=True)
         )
-        print(f"t3rig serve: http://{HOST}:{port}/ ({rig.name})", flush=True)
-        config = uvicorn.Config(create_app(server), host=HOST, port=port, log_level="warning")
+        shown = f"[{host}]" if ":" in host else host
+        print(f"t3rig serve: http://{shown}:{port}/ ({rig.name})", flush=True)
+        if host != HOST:
+            print("Anyone who can reach this address can read the page; it has no login.")
+        app = create_app(server, host)
+        config = uvicorn.Config(app, host=host, port=port, log_level="warning")
         _Uvicorn(config, server.close_streams).run()

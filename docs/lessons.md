@@ -88,3 +88,11 @@ none recorded (it predates the rule)
   pull request step fails when nothing is committed. Workflow text with commands gets the same check.
 - The docs build ran only after a merge to `main`, so pull requests could merge with a broken `-W`
   build. Applied: the docs workflow builds on pull requests too.
+
+## 2026-11-06: [#16](https://github.com/stfngrt/t3rig/issues/16) `serve --host` (first pull request)
+
+- The first change through the worktree and pull request loop went through as written; review
+  posted its findings on the PR.
+- IPv6 `--host` passed its own tests but got 400 on every request, because the tests built the
+  allowed list and the middleware compared the bracketed form. Test an address through the real
+  request path for each address family.

@@ -6,8 +6,8 @@ import pytest
 from fastapi.testclient import TestClient
 from test_watch import IMPL, LEAD, FakeT3, FakeTracker, started
 
-from t3rig.rig import seat_rows
-from t3rig.serve import RigServer, create_app, sort_issues, sse_message
+from t3rig.rig import RigError, seat_rows
+from t3rig.serve import RigServer, check_host, create_app, sort_issues, sse_message
 from t3rig.spec import Edge, Rig, Seat, TrackerSettings
 from t3rig.tracker import Issue
 
@@ -196,3 +196,29 @@ def test_a_failing_round_is_reported_and_the_loop_goes_on(rig: Rig) -> None:
         events = http.get("/api/events").json()["events"]
     assert lines[0] == "ALERT: watch round failed, will retry: ValueError('boom')"
     assert any(e["kind"] == "error" and "boom" in e["text"] for e in events)
+
+
+def test_host_flag_adds_its_address_to_the_host_check(rig: Rig) -> None:
+    server, _, _ = make_server(rig)
+    http = TestClient(create_app(server, "192.168.5.10"), base_url="http://192.168.5.10:8765")
+    assert http.get("/api/seats").status_code == 200
+    assert http.get("/api/seats", headers={"Host": "127.0.0.1:8765"}).status_code == 200
+    assert http.get("/api/seats", headers={"Host": "evil.example"}).status_code == 400
+    default = http_client(server)
+    assert default.get("/api/seats", headers={"Host": "192.168.5.10"}).status_code == 400
+    for address in ("fe80::1", "::1"):
+        v6 = TestClient(create_app(server, address), base_url=f"http://[{address}]:8765")
+        assert v6.get("/api/seats").status_code == 200
+        assert v6.get("/api/seats", headers={"Host": f"[{address}]:8765"}).status_code == 200
+        assert v6.get("/api/seats", headers={"Host": "evil.example"}).status_code == 400
+
+
+@pytest.mark.parametrize("host", ["0.0.0.0", "::", ""])
+def test_wildcard_hosts_are_refused(host: str) -> None:
+    with pytest.raises(RigError, match="the one address"):
+        check_host(host)
+
+
+def test_concrete_hosts_are_accepted() -> None:
+    for host in ("127.0.0.1", "192.168.5.10", "fe80::1", "box.local"):
+        check_host(host)

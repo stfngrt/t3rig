@@ -96,13 +96,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     serve_parser = commands.add_parser(
         "serve",
-        help="Run watch as a server, with a live read-only status page on 127.0.0.1. "
+        help="Run watch as a server, with a live read-only status page on 127.0.0.1, or --host. "
         "Needs the serve extra: uv sync --extra serve.",
     )
     serve_parser.add_argument("rig", help="path to rig.yaml")
     serve_parser.add_argument(
-        "--port", type=int, default=8765, help="port on 127.0.0.1 (default: 8765)"
+        "--host",
+        default="127.0.0.1",
+        help="address to serve on, such as a LAN address; anyone who can reach it can read "
+        "the page (default: 127.0.0.1)",
     )
+    serve_parser.add_argument("--port", type=int, default=8765, help="port (default: 8765)")
     serve_parser.add_argument(
         "--interval", type=float, default=15, help="seconds between seat checks (default: 15)"
     )
@@ -250,7 +254,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     f"serve needs the serve extra ({error.name} is missing): "
                     "run `uv sync --extra serve` in the t3rig checkout"
                 ) from error
-            serve(rig, t3, args.port, args.interval, args.tracker_interval)
+            serve(rig, t3, args.port, args.interval, args.tracker_interval, args.host)
         elif args.command == "watch":
             watch(
                 rig,

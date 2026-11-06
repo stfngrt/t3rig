@@ -27,7 +27,9 @@ with the {term}`operator` and writes specs and {term}`tickets <ticket>` as GitHu
 {term}`needs-approval`. When the operator adds {term}`rig-queue`, `dev.lead` takes the issue and
 hands it to `dev.impl` and `dev.review`. The issue tracker is the interface between `dev.pm` and
 `dev.lead`, so there is no {term}`edge` between them. That also means {term}`watch` pings nobody
-about `dev.pm`, and its stuck or approval alerts print only on the `watch` console.
+about `dev.pm`'s runs, and its stuck or approval alerts print only on the `watch` console. With the
+tracker set in `rigs/self/rig.t3rig.yaml`, `watch` pings `dev.lead` when an issue gets `rig-queue`,
+and the seat that asked when `needs-answer` is removed (see {doc}`design/planning`).
 
 The seats use skills from [Matt Pocock's set](https://github.com/mattpocock/skills) (MIT), vendored
 under `rigs/self/agents/*/skills/` with a `CHANGES.md` listing each change. `docs/agents/` holds the

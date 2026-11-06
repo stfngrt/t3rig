@@ -16,6 +16,21 @@ uv run t3rig watch examples/two-seat/rig.yaml
 - A ping is a short pointer with a one-line excerpt and a link. The dispatcher reads the thread for
   the rest. A run stopped partway says so and shows no excerpt, since it has no result.
 
+## Issue tracker pings
+
+If the rig has a tracker in `rig.t3rig.yaml` (see {doc}`rig-specs`), `watch` also polls its open
+issues and pings for two changes, and nothing else:
+
+- An issue gains {term}`rig-queue`: it pings the tracker's `queue_seat`. An issue that already has
+  the label when `watch` first sees it is pinged once, so queued work isn't missed.
+- {term}`needs-answer` is removed from an open issue: it pings the seat named in the `🤖 <seat>`
+  signature of the question comment, the newest signed comment when `watch` first saw the label, or
+  `queue_seat` if there's none. An issue it never saw with the label gives no ping. When `dev.pm`
+  asked the question, it is pinged after removing the label itself, and that ping needs no action.
+
+A ping names the issue by its full URL. `watch` uses `gh` or `glab` with their own login, and never
+changes labels or writes comments.
+
 ## Failures and alerts
 
 - A failed ping is retried on the next check, and prints an `ALERT` after three failures. A
@@ -24,13 +39,16 @@ uv run t3rig watch examples/two-seat/rig.yaml
 
 ## State
 
-It keeps what it has pinged in a small file under `~/.local/state/t3rig/`, so a restart neither
-repeats old pings nor misses new ones. A crash can repeat a ping, but not lose one.
+It keeps what it has pinged, and the labels it last saw on each tracked issue, in a small file under
+`~/.local/state/t3rig/`, so a restart neither repeats old pings nor misses new ones. A crash can
+repeat a ping, but not lose one.
 
 ## Running it
 
 - It only works while running. It's a foreground command, not a daemon.
-- It polls, every 15 seconds by default (`--interval`), so a ping can lag by that much.
+- It polls, every 15 seconds by default (`--interval`), so a ping can lag by that much. The
+  tracker is polled every 60 seconds by default (`--tracker-interval`), a guess still to be
+  measured against the tracker's rate limits.
 
 ## Approvals
 

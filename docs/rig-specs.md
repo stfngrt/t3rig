@@ -13,6 +13,25 @@
 A spec using anything else is refused with a clear error, including plugins, subagents, hooks and
 runtime resources, startup actions, custom permission policies, services and continuity policies.
 
+## t3rig's settings
+
+`rig.yaml` stays exactly OpenRig's format. t3rig's own settings go in an optional
+`rig.t3rig.yaml` next to it, which `t3rig validate` checks with the rig:
+
+```yaml
+tracker:
+  kind: github        # or gitlab
+  repo: stfngrt/t3rig
+  queue_seat: dev.lead
+review_rounds: 2      # an issue can override this with a "Review rounds: N" line
+```
+
+- `tracker` is the issue tracker {doc}`watch` polls: `kind` picks `gh` or `glab`, `repo` is the
+  repository or project, and `queue_seat` is the seat pinged when an issue is queued. It must be one
+  of the rig's seats.
+- `review_rounds`, a positive integer and 2 by default, is how many review rounds a change gets.
+  t3rig only checks it; the seats' instructions use it.
+
 ## How instructions are delivered
 
 Unlike OpenRig, all instructions go in the seat's {term}`brief`, in OpenRig's {term}`layer order`, whatever

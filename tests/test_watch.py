@@ -4,8 +4,9 @@ from typing import Any
 import pytest
 
 from t3rig.rig import RigError
-from t3rig.spec import Edge, Rig, Seat
+from t3rig.spec import Edge, Rig, Seat, TrackerSettings
 from t3rig.t3 import T3Error
+from t3rig.tracker import Issue, TrackerError
 from t3rig.watch import Watcher, dispatchers, excerpt, state_path, waiting_approval, watch
 
 
@@ -358,3 +359,181 @@ def test_message_sent_to_a_seat_is_not_shown_as_its_reply(rig: Rig) -> None:
     watcher.tick()
     assert "dev.impl finished a run (completed)." in t3.sent[0][1]
     assert "Last reply" not in t3.sent[0][1] and "Please review" not in t3.sent[0][1]
+
+
+class FakeTracker:
+    def __init__(self) -> None:
+        self.labels: dict[int, set[str]] = {}
+        self.notes: dict[int, list[str]] = {}
+        self.error: Exception | None = None
+        self.read: list[int] = []
+
+    def open_issues(self) -> list[Issue]:
+        if self.error:
+            raise self.error
+        return [Issue(n, f"https://t/issues/{n}", frozenset(ls)) for n, ls in self.labels.items()]
+
+    def comments(self, number: int) -> list[str]:
+        self.read.append(number)
+        return self.notes.get(number, [])
+
+
+def tracked(rig: Rig) -> Rig:
+    return Rig(
+        name=rig.name,
+        path=rig.path,
+        seats=rig.seats,
+        edges=rig.edges,
+        tracker=TrackerSettings("github", "o/r", "dev.lead"),
+    )
+
+
+def issue_watcher(rig: Rig) -> tuple[Watcher, FakeT3, FakeTracker, list[str]]:
+    t3, tracker, lines = FakeT3(), FakeTracker(), []
+    started(t3)
+    rig = tracked(rig)
+    return Watcher(rig, t3, state_path(rig), lines.append, None, tracker), t3, tracker, lines
+
+
+def test_queued_issue_pings_the_queue_seat_once(rig: Rig) -> None:
+    watcher, t3, tracker, lines = issue_watcher(rig)
+    tracker.labels[5] = {"enhancement"}
+    watcher.poll_tracker()
+    assert t3.sent == []
+
+    tracker.labels[5].add("rig-queue")
+    watcher.poll_tracker()
+    watcher.poll_tracker()
+    assert len(t3.sent) == 1
+    thread_id, message = t3.sent[0]
+    assert thread_id == f"id-{LEAD}"
+    assert "queued with `rig-queue`: https://t/issues/5" in message
+    assert lines == ["pinged dev.lead: #5"]
+
+
+def test_issue_already_queued_on_first_sight_pings_once(rig: Rig) -> None:
+    watcher, t3, tracker, _ = issue_watcher(rig)
+    tracker.labels[5] = {"rig-queue", "in-progress"}
+    watcher.poll_tracker()
+    watcher.poll_tracker()
+    assert len(t3.sent) == 1
+
+
+def test_requeued_issue_pings_again(rig: Rig) -> None:
+    watcher, t3, tracker, _ = issue_watcher(rig)
+    tracker.labels[5] = {"rig-queue"}
+    watcher.poll_tracker()
+    tracker.labels[5] = set()
+    watcher.poll_tracker()
+    tracker.labels[5] = {"rig-queue"}
+    watcher.poll_tracker()
+    assert len(t3.sent) == 2
+
+
+def test_answer_pings_the_seat_that_signed_the_question(rig: Rig) -> None:
+    watcher, t3, tracker, _ = issue_watcher(rig)
+    tracker.labels[5] = set()
+    tracker.notes[5] = [
+        "🤖 dev.lead (t3rig)\nplan",
+        "🤖 dev.impl (t3rig)\nQuestions",
+        "operator: hm",
+    ]
+    watcher.poll_tracker()
+    tracker.labels[5] = {"needs-answer"}
+    watcher.poll_tracker()
+    assert t3.sent == []
+    # The answer is written by dev.pm, so it is signed too; the question's signer still gets it.
+    tracker.notes[5].append("🤖 dev.pm (t3rig)\nAnswers")
+    tracker.labels[5] = set()
+    watcher.poll_tracker()
+    watcher.poll_tracker()
+    assert len(t3.sent) == 1
+    thread_id, message = t3.sent[0]
+    assert thread_id == f"id-{IMPL}"
+    assert "`needs-answer` was removed: https://t/issues/5" in message
+
+
+def test_answer_without_a_signed_question_pings_the_queue_seat(rig: Rig) -> None:
+    watcher, t3, tracker, _ = issue_watcher(rig)
+    tracker.labels[5] = {"needs-answer"}
+    tracker.notes[5] = ["no signature", "🤖 dev.nobody (t3rig)\nunknown seat"]
+    watcher.poll_tracker()
+    tracker.labels[5] = set()
+    watcher.poll_tracker()
+    assert [thread for thread, _ in t3.sent] == [f"id-{LEAD}"]
+
+
+def test_no_answer_ping_without_prior_state_or_for_closed_issues(rig: Rig) -> None:
+    watcher, t3, tracker, _ = issue_watcher(rig)
+    tracker.labels[5] = set()
+    tracker.labels[6] = {"needs-answer"}
+    watcher.poll_tracker()  # 5 was never seen with needs-answer.
+    del tracker.labels[6]  # Closed while waiting.
+    watcher.poll_tracker()
+    tracker.labels[6] = set()  # Reopened without the label.
+    watcher.poll_tracker()
+    assert t3.sent == []
+
+
+def test_failed_issue_ping_retries_then_alerts(rig: Rig) -> None:
+    watcher, t3, tracker, lines = issue_watcher(rig)
+    t3.send_error = T3Error("send failed")
+    tracker.labels[5] = {"rig-queue"}
+    for _ in range(3):
+        watcher.poll_tracker()
+    assert lines[-1].startswith("ALERT: can't ping dev.lead about #5 (try 3)")
+    t3.send_error = None
+    watcher.poll_tracker()
+    assert len(t3.sent) == 1
+
+
+def test_issue_state_survives_a_restart(rig: Rig) -> None:
+    watcher, t3, tracker, _ = issue_watcher(rig)
+    tracker.labels[5] = {"rig-queue", "needs-answer"}
+    tracker.notes[5] = ["🤖 dev.impl (t3rig)\nQuestions"]
+    watcher.poll_tracker()
+    again = Watcher(watcher.rig, t3, watcher.path, print, None, tracker)
+    again.poll_tracker()
+    assert len(t3.sent) == 1
+    tracker.labels[5] = {"rig-queue"}
+    again.poll_tracker()
+    assert t3.sent[-1][0] == f"id-{IMPL}"
+
+
+def test_watch_polls_the_tracker_on_its_own_interval(rig: Rig) -> None:
+    t3, tracker = FakeT3(), FakeTracker()
+    started(t3)
+    polls: list[int] = []
+    tracker.open_issues = lambda: polls.append(1) or []  # type: ignore[method-assign]
+    now = [0.0]
+
+    def sleep(seconds: float) -> None:
+        now[0] += seconds
+        if now[0] > 100:
+            raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        watch(
+            tracked(rig),
+            t3,
+            15,
+            sleep=sleep,
+            tracker_interval=60,
+            make_tracker=lambda settings: tracker,
+            clock=lambda: now[0],
+        )
+    assert len(polls) == 2  # At 0s and 60s, not every 15s.
+
+
+def test_watch_survives_tracker_errors(rig: Rig) -> None:
+    t3, tracker = FakeT3(), FakeTracker()
+    tracker.error = TrackerError("gh exited 1")
+    lines: list[str] = []
+    watch(tracked(rig), t3, 1, once=True, out=lines.append, make_tracker=lambda s: tracker)
+    assert lines == ["can't read the tracker, will retry: gh exited 1"]
+
+
+def test_tracker_alone_is_enough_to_watch(rig: Rig, tmp_path: Path) -> None:
+    settings = tracked(rig).tracker
+    bare = Rig(name="b", path=tmp_path / "b.yaml", seats=rig.seats, edges=(), tracker=settings)
+    watch(bare, FakeT3(), 1, once=True, make_tracker=lambda s: FakeTracker())

@@ -3,7 +3,8 @@
 t3rig's domain language: the terms it borrows from [OpenRig](https://github.com/mvschwarz/openrig),
 what each means here, and which T3 Code concept carries it. OpenRig citations are `path:line` under
 `docs/` in that repo. Where a word has two names in use, one is preferred and the rest are listed
-as _Avoid_. Planning terms marked (proposal) come from {doc}`design/planning`, which isn't built.
+as _Avoid_. Planning terms say where t3rig departs from OpenRig; {doc}`design/planning` has the
+design.
 
 ## Topology
 
@@ -190,8 +191,8 @@ Runtime mode
 
 ## Planning and tracking
 
-These terms come from OpenRig's coordination and SDLC documents. t3rig uses the ones marked
-(proposal) only in {doc}`design/planning`.
+These terms come from OpenRig's coordination and SDLC documents. Each says what t3rig does instead;
+see {doc}`design/planning`.
 
 ```{glossary}
 :sorted:
@@ -203,43 +204,43 @@ Queue item
 
 State
   Where a queue item is: `pending`, `in-progress`, `done`, `blocked`, `failed`, `denied`, `canceled`
-  or `handed-off` (`as-built/architecture/coordination-primitive.md:45-52`). In t3rig (proposal),
-  labels carry a ticket's state.
+  or `handed-off` (`as-built/architecture/coordination-primitive.md:45-52`). In t3rig, four labels
+  carry an open ticket's state ({term}`needs-approval`, {term}`rig-queue`, {term}`in-progress` and
+  {term}`needs-answer`), and closing the issue ends it. There is no `blocked` label.
 
 Closure
   Finishing a queue item as `done` with a reason from `handed_off_to`, `denied`, `canceled`,
   `no-follow-on`, `escalation` or `superseded`
-  (`as-built/architecture/coordination-primitive.md:268-294`). In t3rig (proposal), a `Closed:` line
-  in the last comment: done, denied or canceled.
+  (`as-built/architecture/coordination-primitive.md:268-294`). In t3rig, closing the issue: the lead
+  closes finished work, and the operator closes denied or canceled work.
 
 Human verb
   What a person does to a queue item. OpenRig has nine: `approve`, `deny`, `route`, `annotate`,
   `hold`, `drop`, `handoff`, `resolve` and `answer`
-  (`as-built/architecture/mission-control.md:97-107`). t3rig (proposal) takes six as comment
-  commands and leaves out `route`, `handoff` and `annotate`.
+  (`as-built/architecture/mission-control.md:97-107`). t3rig has no verbs: it reads labels and plain
+  comments only.
 
 Approve
-  OpenRig: closes the item as `done`/`no-follow-on`. t3rig (proposal): approves a plan, and work
-  goes on.
+  OpenRig: closes the item as `done`/`no-follow-on`. In t3rig, adding {term}`rig-queue` is the only
+  approval; the lead's plan comment is not a second gate.
 
 Deny
-  Rejects the work and closes it as `denied`. t3rig (proposal): only on a plan awaiting approval,
-  with a reason.
+  Rejects the work and closes it as `denied`. In t3rig, the operator closes the issue.
 
 Hold
-  Parks the item as `blocked` (`as-built/architecture/mission-control.md:97-107`). t3rig (proposal):
-  to blocked, with a reason.
+  Parks the item as `blocked` (`as-built/architecture/mission-control.md:97-107`). Not used by
+  t3rig: work that can't go on gets {term}`needs-answer`.
 
 Drop
-  Withdraws the item and closes it as `canceled`. t3rig (proposal): with a reason.
+  Withdraws the item and closes it as `canceled`. In t3rig, the operator closes the issue.
 
 Resolve
   Takes an item parked on a human seat or a typed gate back to work, with decision evidence.
-  OpenRig: to `in-progress` (`as-built/architecture/mission-control.md:97-107`); t3rig (proposal):
-  from blocked to the queue.
+  OpenRig: to `in-progress` (`as-built/architecture/mission-control.md:97-107`). Not used by t3rig.
 
 Answer
-  Records a person's answer to a pending question. t3rig (proposal): the comment is the reply.
+  Records a person's answer to a pending question. In t3rig, `dev.pm` writes the operator's answers
+  on the issue and removes {term}`needs-answer`.
 
 Route
   Hands the item to another seat as a new item (`as-built/architecture/mission-control.md:97-107`).
@@ -273,7 +274,9 @@ Proof
 Planning dial
   How much planning a piece of work gets, from P0 to P4: P0 mini-requirements and pointers, P1 an
   authored spec (the default), P2 plus a research round, P3 plus an adversarial pass, P4 plus a
-  blind design gate (`reference/planning-dial.md:3-25`). t3rig (proposal) approves from P1 up.
+  blind design gate (`reference/planning-dial.md:3-25`). In t3rig it is guidance in the lead's role:
+  the lead names the rung in its plan comment. It has no labels or settings, and never decides
+  whether approval is needed.
 
 Wave
   Slices built in parallel in separate file territories, merged one at a time and reviewed once by
@@ -304,8 +307,8 @@ Ticket
   _Avoid_: work item
 
 rig-queue
-  The label the operator alone adds to approve a ticket; `dev.lead` takes labelled issues in number
-  order.
+  The label the operator alone adds to approve a ticket, and the only approval; `dev.lead` takes
+  labelled issues in number order. `watch` pings the tracker's `queue_seat` when an issue gains it.
 
 needs-approval
   The label `dev.pm` puts on a finished ticket. `rig-queue` wins when both are set.
@@ -313,11 +316,10 @@ needs-approval
 in-progress
   The label `dev.lead` adds when it takes a ticket.
 
-blocked
-  The label `dev.lead` swaps in when it can't finish a ticket.
-
 needs-answer
-  A question for the operator is waiting in a comment. The ticket stays open until answered.
+  A question for the operator is waiting in a comment, from `dev.pm` or `dev.lead`, including when
+  the lead can't finish a ticket. The operator answers with `dev.pm`, which writes the answers on the
+  issue and removes the label; `watch` then pings the seat that asked.
 
 Project manager
   The seat `dev.pm`: works with the operator before anything is built and writes tickets. It never

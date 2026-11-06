@@ -7,7 +7,7 @@ because its state machine would add labels this rig doesn't use).
 | Role in the skills | Label in this repo | Meaning |
 | --- | --- | --- |
 | `ready-for-agent` | `needs-approval` | A ticket or spec `dev.pm` has finished and the operator hasn't approved. It does not reach `dev.lead` until the operator adds `rig-queue` |
-| `needs-info` | `needs-answer` | `dev.pm` is waiting on the operator's answer to a question in a comment |
+| `needs-info` | `needs-answer` | A seat is waiting on the operator's answer to a question in a comment |
 | `needs-triage`, `ready-for-human` | none | Not used |
 | `wontfix` | `wontfix` (the GitHub default) | Used only when closing without action, with a comment |
 
@@ -21,13 +21,16 @@ this table.
 | `needs-approval` | `dev.pm` | Finished; waiting for the operator |
 | `rig-queue` | the operator only | Approved; `dev.lead` takes these in issue-number order |
 | `in-progress` | `dev.lead` | Being worked on |
-| `blocked` | `dev.lead` | Couldn't be finished |
-| `needs-answer` | `dev.pm` (or `dev.lead`) | Has questions for the operator; stays open until answered. Whoever acts on the answer (the lead or `dev.pm`) removes it |
+| `needs-answer` | `dev.pm` or `dev.lead` | Has questions for the operator, including why the lead couldn't finish; stays open until answered. The operator answers with `dev.pm`, which writes the answers on the issue and removes it |
 | `wayfinder:map`, `wayfinder:<type>` | `dev.pm` | A wayfinder map or one of its decision tickets; never `rig-queue` |
+
+These four (`needs-approval`, `rig-queue`, `in-progress`, `needs-answer`) are the whole state set;
+there is no `blocked` label. Adding `rig-queue` is the only approval.
 
 `needs-approval` is never removed by `dev.pm`. `rig-queue` wins: when `dev.lead` takes a `rig-queue`
 issue, it removes `needs-approval` in the same edit that adds `in-progress`.
 
-`docs/design/planning.md` proposes different meanings for these labels (`needs-approval` there is a
-state of the plan-approval machine). The two are to be settled with #3; until then this file is what
-the rig follows.
+`t3rig watch` pings `dev.lead` when an issue gains `rig-queue`, and the seat that asked when
+`needs-answer` is removed (see `docs/design/planning.md`). An answered lead question resumes without
+`rig-queue`: `dev.lead` adds `in-progress` back and continues the issue. To deny or cancel, the
+operator closes the issue.

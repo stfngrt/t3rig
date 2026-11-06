@@ -1,5 +1,7 @@
 """Ping each dispatcher when a seat it delegates to finishes a run or needs input.
 
+With a tracker in `rig.t3rig.yaml`, also ping a seat when an issue is queued or answered.
+
 The dispatcher of a seat is the seat with a `delegates_to` edge to it. A ping only points at the
 seat's thread, and a small state file records what has been pinged, so a restart neither repeats
 old pings nor misses new ones. Delivery is at least once: a crash can repeat a ping, never lose it.
@@ -32,6 +34,7 @@ from t3rig.rig import (
 )
 from t3rig.spec import Rig
 from t3rig.t3 import T3Cli, T3Error
+from t3rig.tracker import Issue, Tracker, TrackerError, tracker_for
 
 EXCERPT_CHARS = 120
 ALERT_AFTER_FAILURES = 3
@@ -44,6 +47,10 @@ CLOSING = (
     "Each line above points at a seat's thread; read it with `t3 thread show <id> --messages 3`. "
     "Reply to a seat only if there's more for it to do, and end your turn otherwise."
 )
+QUEUE_LABEL = "rig-queue"
+ANSWER_LABEL = "needs-answer"
+SIGNATURE = re.compile(r"^\s*🤖\s*([\w.-]+)", re.M)
+ISSUE_CLOSING = "Read each issue above and its comments before you act on it."
 
 
 def state_path(rig: Rig) -> Path:
@@ -101,6 +108,7 @@ class Event:
     line: str
     updates: dict[str, Any] = field(default_factory=dict)
     needs_person: bool = False
+    issue: str | None = None  # Set for tracker events, whose updates go to the issue's state.
 
 
 def _thread_line(prefix: str, thread: dict[str, Any]) -> str:
@@ -225,12 +233,13 @@ class Watcher:
         path: Path,
         out: Callable[[str], None] = print,
         connect: Callable[[], tuple[Tools, str]] | None = None,
+        tracker: Tracker | None = None,
     ) -> None:
         self.rig, self.t3, self.path, self.out = rig, t3, path, out
-        self.connect = connect
+        self.connect, self.tracker = connect, tracker
         self.dispatchers = dispatchers(rig)
         self.state = load_state(path)
-        self.failures: dict[str, int] = {}
+        self.failures: dict[tuple[str, str], int] = {}
 
     def _waiting_on(self, thread_id: str, item_count: int) -> str | None:
         """What a seat is waiting on. A ping without it is still useful, so errors are dropped."""
@@ -247,24 +256,97 @@ class Watcher:
             seat = self.state["seats"].setdefault(session_name, {"run": None, "asked": None})
             seat.update(updates)
 
-    def _deliver(self, dispatcher: str, events: list[Event], threads: dict[str, str]) -> None:
+    def _apply_issue(self, key: str, updates: dict[str, Any]) -> None:
+        issues = self.state.setdefault("issues", {})
+        entry = issues.setdefault(key, {QUEUE_LABEL: False, ANSWER_LABEL: False, "asker": None})
+        entry.update(updates)
+        if not entry[QUEUE_LABEL] and not entry[ANSWER_LABEL]:
+            del issues[key]  # Forgetting it is the same as never having seen either label.
+
+    def _deliver(
+        self,
+        dispatcher: str,
+        events: list[Event],
+        threads: dict[str, str],
+        closing: str = CLOSING,
+    ) -> None:
         summary = ", ".join(event.seat for event in events)
+        key = (dispatcher, closing)
         try:
             thread_id = threads.get(dispatcher)
             if thread_id is None:
                 raise RigError(f"{dispatcher} has no thread")
             lines = "\n".join(event.line for event in events)
-            self.t3.send(thread_id, envelope(SENDER, dispatcher, f"{lines}\n\n{CLOSING}"))
+            self.t3.send(thread_id, envelope(SENDER, dispatcher, f"{lines}\n\n{closing}"))
         except (RigError, T3Error) as error:
-            count = self.failures.get(dispatcher, 0) + 1
-            self.failures[dispatcher] = count
+            count = self.failures.get(key, 0) + 1
+            self.failures[key] = count
             prefix = "ALERT: " if count >= ALERT_AFTER_FAILURES else ""
             self.out(f"{prefix}can't ping {dispatcher} about {summary} (try {count}): {error}")
             return
-        self.failures.pop(dispatcher, None)
+        self.failures.pop(key, None)
         for event in events:
-            self._apply(event.session_name, event.updates)
+            if event.issue is None:
+                self._apply(event.session_name, event.updates)
+            else:
+                self._apply_issue(event.issue, event.updates)
         self.out(f"pinged {dispatcher}: {summary}")
+
+    def _asker(self, number: int) -> str | None:
+        """The seat that signed the newest signed comment, which asked the question."""
+        assert self.tracker is not None
+        for body in reversed(self.tracker.comments(number)):
+            if found := SIGNATURE.search(body):
+                return found[1] if self.rig.seat(found[1]) else None
+        return None
+
+    def _issue_events(self, issue: Issue, entry: dict[str, Any] | None) -> list[Event]:
+        """Pings for one open issue's label changes; other changes are remembered at once."""
+        assert self.rig.tracker is not None
+        key, queue_seat = str(issue.number), self.rig.tracker.queue_seat
+        queued = entry is not None and entry[QUEUE_LABEL]
+        waiting = entry is not None and entry[ANSWER_LABEL]
+        events: list[Event] = []
+        updates: dict[str, Any] = {}
+
+        def ping(seat: str, text: str, change: dict[str, Any]) -> None:
+            line = f"- {text}: {issue.url}"
+            events.append(Event(f"#{key}", "", seat, line, change, issue=key))
+
+        if QUEUE_LABEL in issue.labels and not queued:
+            ping(queue_seat, f"An issue was queued with `{QUEUE_LABEL}`", {QUEUE_LABEL: True})
+        elif QUEUE_LABEL not in issue.labels and queued:
+            updates[QUEUE_LABEL] = False
+        if ANSWER_LABEL in issue.labels and not waiting:
+            # Read now, before the answer adds signed comments of its own.
+            updates |= {ANSWER_LABEL: True, "asker": self._asker(issue.number)}
+        elif ANSWER_LABEL not in issue.labels and waiting:
+            seat = (entry or {}).get("asker") or queue_seat
+            text = f"The operator answered, and `{ANSWER_LABEL}` was removed"
+            ping(seat, text, {ANSWER_LABEL: False, "asker": None})
+        if updates:
+            self._apply_issue(key, updates)
+        return events
+
+    def poll_tracker(self) -> None:
+        """Ping when an open issue gains `rig-queue` or loses `needs-answer`."""
+        assert self.tracker is not None
+        issues = self.tracker.open_issues()
+        known = self.state.setdefault("issues", {})
+        open_keys = {str(issue.number) for issue in issues}
+        for key in [key for key in known if key not in open_keys]:
+            del known[key]  # Closed: a reopened issue starts afresh.
+        by_seat: dict[str, list[Event]] = {}
+        for issue in issues:
+            for event in self._issue_events(issue, known.get(str(issue.number))):
+                assert event.dispatcher is not None
+                by_seat.setdefault(event.dispatcher, []).append(event)
+        if by_seat:
+            statuses = seat_statuses(self.rig, self.t3)
+            threads = {s.seat.qualified_id: s.thread["threadId"] for s in statuses if s.thread}
+            for seat, events in by_seat.items():
+                self._deliver(seat, events, threads, ISSUE_CLOSING)
+        save_state(self.path, self.state)
 
     def tick(self) -> None:
         statuses = seat_statuses(self.rig, self.t3)
@@ -309,17 +391,28 @@ def watch(
     once: bool = False,
     out: Callable[[str], None] = print,
     sleep: Callable[[float], None] = time.sleep,
+    tracker_interval: float = 60,
+    make_tracker: Callable[..., Tracker] = tracker_for,
+    clock: Callable[[], float] = time.monotonic,
 ) -> None:
-    if not dispatchers(rig):
+    if not dispatchers(rig) and rig.tracker is None:
         raise RigError(f"rig {rig.name} has no delegates_to edges, so there's nobody to ping")
     path = state_path(rig)
+    tracker = make_tracker(rig.tracker) if rig.tracker else None
     with _single_watcher(path):
-        watcher = Watcher(rig, t3, path, out, connect_mcp)
+        watcher = Watcher(rig, t3, path, out, connect_mcp, tracker)
+        next_poll = clock()
         while True:
             try:
                 watcher.tick()
             except T3Error as error:
                 out(f"can't read seats, will retry: {error}")
+            if tracker is not None and clock() >= next_poll:
+                next_poll = clock() + tracker_interval
+                try:
+                    watcher.poll_tracker()
+                except (T3Error, TrackerError) as error:
+                    out(f"can't read the tracker, will retry: {error}")
             if once:
                 return
             sleep(interval)

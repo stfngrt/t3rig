@@ -633,3 +633,51 @@ def test_skill_install_files_keep_applies_on_and_required(tmp_path: Path) -> Non
     files = "{path: a/SKILL.md, applies_on: [restore]}, {path: b/SKILL.md, required: false}"
     assert load_rig(startup_rig(tmp_path, files)).seats[0].skills == ()
     assert "can't read" in errors_for(startup_rig(tmp_path, "{path: ghost/SKILL.md}"))
+
+
+def test_reads_t3rig_settings_next_to_the_rig(tmp_path: Path) -> None:
+    path = write_rig(tmp_path, pods(MEMBER % ("a", "claude-code")))
+    assert load_rig(path).tracker is None and load_rig(path).review_rounds == 2
+    (tmp_path / "rig.t3rig.yaml").write_text(
+        "tracker: {kind: gitlab, repo: g/p, queue_seat: dev.a}\nreview_rounds: 3\n"
+    )
+    rig = load_rig(path)
+    assert rig.tracker is not None
+    assert (rig.tracker.kind, rig.tracker.repo, rig.tracker.queue_seat) == (
+        "gitlab",
+        "g/p",
+        "dev.a",
+    )
+    assert rig.review_rounds == 3
+
+
+def test_refuses_bad_t3rig_settings(tmp_path: Path) -> None:
+    path = write_rig(tmp_path, pods(MEMBER % ("a", "claude-code")))
+    (tmp_path / "rig.t3rig.yaml").write_text(
+        "tracker: {kind: jira, repo: '', queue_seat: dev.nobody, extra: 1}\n"
+        "review_rounds: 0\nsurprise: 1\n"
+    )
+    errors = errors_for(path)
+    assert "rig.t3rig.yaml.surprise: unknown key" in errors
+    assert "rig.t3rig.yaml.review_rounds: must be a positive integer (got 0)" in errors
+    assert "rig.t3rig.yaml.tracker.extra: unknown key" in errors
+    assert "tracker.kind: must be one of github, gitlab (got 'jira')" in errors
+    assert "tracker.repo: must be a non-empty string" in errors
+    assert "tracker.queue_seat: no seat 'dev.nobody' in the rig" in errors
+
+
+def test_review_rounds_refuses_booleans(tmp_path: Path) -> None:
+    path = write_rig(tmp_path, pods(MEMBER % ("a", "claude-code")))
+    (tmp_path / "rig.t3rig.yaml").write_text("review_rounds: true\n")
+    assert "review_rounds: must be a positive integer (got True)" in errors_for(path)
+
+
+def test_self_rig_has_a_tracker() -> None:
+    rig = load_rig(Path(__file__).parent.parent / "rigs" / "self" / "rig.yaml")
+    assert rig.tracker is not None
+    assert (rig.tracker.kind, rig.tracker.repo, rig.tracker.queue_seat) == (
+        "github",
+        "stfngrt/t3rig",
+        "dev.lead",
+    )
+    assert rig.review_rounds == 2

@@ -1,0 +1,6 @@
+# t3rig's own settings for this rig; rig.yaml stays OpenRig's format.
+tracker:
+  kind: github
+  repo: stfngrt/t3rig
+  queue_seat: dev.lead
+review_rounds: 2 # an issue can override this with a "Review rounds: N" line

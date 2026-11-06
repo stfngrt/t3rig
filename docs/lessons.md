@@ -51,3 +51,13 @@ none recorded (it predates the rule)
   the operator, retro vs lessons). Applied: `culture.md` now says to check the culture and every role
   for the same topic when changing a rule.
 - Bigger lessons from tonight became issues without `rig-queue` (linked in #11's closing comment).
+
+## 2026-11-06: [#15](https://github.com/stfngrt/t3rig/issues/15) Run the rig from the tracker
+
+- The ticket added an answer ping but didn't say what the pinged seat does next; review caught it.
+  Applied: `dev.pm`'s role now says a ticket that adds a ping or label transition names what the
+  receiving seat does with it.
+- `watch` wasn't running when dev.impl finished, so the lead never heard and the operator had to
+  nudge. Nothing tells a seat that `watch` is down.
+- On first sight, `watch` pings for an issue with `rig-queue` even when it's already `in-progress`,
+  so a restart re-pings work under way. Left as is: harmless, and useful if the lead crashed.

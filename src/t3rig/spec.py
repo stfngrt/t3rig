@@ -110,6 +110,10 @@ DELIVERY_HINTS = TEXT_DELIVERY_HINTS | {"skill_install"}
 ROLE_GUIDANCE = re.compile(r"(^|[\\/])guidance[\\/]role\.md$")
 FRONTMATTER = re.compile(r"^---\s*\n([\s\S]*?)\n---\s*\n?([\s\S]*)$")
 
+SETTINGS_FILE = "rig.t3rig.yaml"
+TRACKER_KINDS = ("github", "gitlab")
+DEFAULT_REVIEW_ROUNDS = 2
+
 ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 RIG_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+$")
 
@@ -170,12 +174,21 @@ class Edge:
 
 
 @dataclass(frozen=True)
+class TrackerSettings:
+    kind: str
+    repo: str
+    queue_seat: str
+
+
+@dataclass(frozen=True)
 class Rig:
     name: str
     path: Path
     seats: tuple[Seat, ...]
     edges: tuple[Edge, ...]
     summary: str | None = None
+    tracker: TrackerSettings | None = None
+    review_rounds: int = DEFAULT_REVIEW_ROUNDS
 
     def session_name(self, seat: Seat) -> str:
         """OpenRig's canonical seat name, used here as the T3 thread title."""
@@ -823,6 +836,38 @@ def _delegation_cycles(edges: list[Edge]) -> list[str]:
     ]
 
 
+def _load_settings(
+    rig_root: Path, seats: set[str], errors: list[str]
+) -> tuple[TrackerSettings | None, int]:
+    """t3rig's own settings, kept out of `rig.yaml` so it stays OpenRig's format."""
+    path = rig_root / SETTINGS_FILE
+    if not path.exists():
+        return None, DEFAULT_REVIEW_ROUNDS
+    data = _read_yaml_mapping(path, SETTINGS_FILE, errors)
+    if data is None:
+        return None, DEFAULT_REVIEW_ROUNDS
+    _check_keys(data, {"tracker", "review_rounds"}, set(), SETTINGS_FILE, errors)
+    rounds = data.get("review_rounds", DEFAULT_REVIEW_ROUNDS)
+    if type(rounds) is not int or rounds < 1:
+        errors.append(f"{SETTINGS_FILE}.review_rounds: must be a positive integer (got {rounds!r})")
+    raw = data.get("tracker")
+    if raw is None:
+        return None, rounds
+    where = f"{SETTINGS_FILE}.tracker"
+    if not isinstance(raw, dict):
+        errors.append(f"{where}: must be a mapping")
+        return None, rounds
+    _check_keys(raw, {"kind", "repo", "queue_seat"}, set(), where, errors)
+    kind, repo, queue_seat = raw.get("kind"), raw.get("repo"), raw.get("queue_seat")
+    if kind not in TRACKER_KINDS:
+        errors.append(f"{where}.kind: must be one of {', '.join(TRACKER_KINDS)} (got {kind!r})")
+    if not isinstance(repo, str) or not repo:
+        errors.append(f"{where}.repo: must be a non-empty string (got {repo!r})")
+    if queue_seat not in seats:
+        errors.append(f"{where}.queue_seat: no seat {queue_seat!r} in the rig")
+    return TrackerSettings(kind, repo, queue_seat), rounds
+
+
 def load_rig(path: str | Path) -> Rig:
     """Parse a rig file. Raises SpecError listing every problem."""
     rig_path = Path(path).resolve()
@@ -907,6 +952,7 @@ def load_rig(path: str | Path) -> Rig:
             _check_edge_ends(edge, True, qualified, where, errors)
             edges.append(edge)
 
+    tracker, review_rounds = _load_settings(rig_root, qualified, errors)
     if not errors:
         errors.extend(_delegation_cycles(edges))
     if errors:
@@ -917,4 +963,6 @@ def load_rig(path: str | Path) -> Rig:
         seats=tuple(seats),
         edges=tuple(edges),
         summary=data.get("summary"),
+        tracker=tracker,
+        review_rounds=review_rounds,
     )

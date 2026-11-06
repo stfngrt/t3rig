@@ -198,8 +198,8 @@ Each phase is its own issue, in this order.
    the `.gitignore` line to add, since t3rig doesn't edit it and `.t3rig/` shows as untracked until
    then.
    - **Settings:** the opt-in `skills: seat|shared`, default `shared`, lives in the t3rig settings
-     file from #3/#4 (name not settled), which `planning.md` proposes for tracker settings. It is
-     not a separate file for this.
+     file, `rig.t3rig.yaml` (settled in #15, see `planning.md`). It is not a separate file for
+     this.
    - **Compaction:** depends on #5's `t3rig refocus` recommendation being approved first, because
      the catalog in the first message is summarised at compaction.
 3. **Old-copy cleanup and docs for the seat folder.** Size S. t3rig never deletes, so the old shared

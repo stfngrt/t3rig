@@ -78,11 +78,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     watch_parser = commands.add_parser(
-        "watch", help="Ping each dispatcher when a seat it delegates to finishes or needs input."
+        "watch",
+        help="Ping each dispatcher when a seat it delegates to finishes or needs input, "
+        "and a seat when an issue is queued or answered.",
     )
     watch_parser.add_argument("rig", help="path to rig.yaml")
     watch_parser.add_argument(
-        "--interval", type=float, default=15, help="seconds between checks (default: 15)"
+        "--interval", type=float, default=15, help="seconds between seat checks (default: 15)"
+    )
+    watch_parser.add_argument(
+        "--tracker-interval",
+        type=float,
+        default=60,
+        help="seconds between issue tracker checks, if rig.t3rig.yaml sets one (default: 60)",
     )
     watch_parser.add_argument("--once", action="store_true", help="check once and exit")
     return parser
@@ -226,7 +234,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         elif args.command == "log":
             print(log(rig, t3, args.seat, args.messages), end="")
         elif args.command == "watch":
-            watch(rig, t3, args.interval, once=args.once, out=lambda line: print(line, flush=True))
+            watch(
+                rig,
+                t3,
+                args.interval,
+                once=args.once,
+                out=lambda line: print(line, flush=True),
+                tracker_interval=args.tracker_interval,
+            )
     except KeyboardInterrupt:
         return 0
     except SpecError as error:

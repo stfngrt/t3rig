@@ -15,7 +15,7 @@
 {{ issue_list(view.questions, "No questions.") }}
 <h2>Waiting for your approval</h2>
 {{ issue_list(view.approvals, "Nothing to approve.") }}
-<h2>Queue</h2>
+<h2>Queue <span class="note">by issue number</span></h2>
 {{ issue_list(view.queue, "Nothing queued.", True) }}
 {% else %}
 <h2>Issues</h2>

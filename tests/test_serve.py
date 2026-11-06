@@ -294,7 +294,8 @@ def test_needs_you_is_split_and_shows_no_label_names(rig: Rig) -> None:
     server.refresh()
     issues = server.fragment("issues")
     questions, rest = issues.split("Waiting for your approval")
-    approvals, queue = rest.split("<h2>Queue</h2>")
+    approvals, queue = rest.split("<h2>Queue")
+    assert "by issue number" in queue
     assert '<a href="https://t/issues/3"><span class="num">#3</span> Issue 3</a>' in questions
     assert "#4" in approvals and "#3" not in approvals
     assert 'class="current"' in queue and "in progress" in queue

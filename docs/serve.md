@@ -49,7 +49,8 @@ The page is meant to be read at a glance: what needs you, what the rig is doing,
 - **Waiting for your approval:** open issues labelled {term}`needs-approval`, unless they already
   have {term}`rig-queue`.
 - **Queue:** open issues labelled {term}`rig-queue` or {term}`in-progress`, the one in progress
-  first and highlighted, then the rest in issue-number order.
+  first and highlighted, then the rest by issue number. The lead takes work in the order of the
+  project board, which the page doesn't show yet.
 - **Seats:** one card per {term}`seat`, with:
   - its role in words (Lead, Implementer, Reviewer, Project manager; other roles are taken from the
     seat id) above the seat id;
@@ -66,11 +67,11 @@ Each issue shows its number and title, linked to its full URL, and no label name
 actions: it doesn't approve, message or stop anything. Talk to the rig through `dev.pm`, or with
 `t3rig send`.
 
-The page updates itself with server-sent events (htmx) after every check, without a reload. Only
-the parts that changed are sent, so an open activity log or an expanded message stays open. The
-data comes from the same sources as `ps`, `log` and `watch`, and nothing is stored apart from the
-last 200 activity entries, in memory. It follows the system's light or dark mode and works at phone
-width.
+The page updates itself with server-sent events (htmx) after every check, without a reload. Only the
+parts that changed are sent, and an open activity log stays open. An expanded message closes again
+when any seat changes. The data comes from the same sources as `ps`, `log` and `watch`, and nothing
+is stored apart from the last 200 activity entries, in memory. It follows the system's light or dark
+mode and works at phone width.
 
 ## A demo for screenshots
 

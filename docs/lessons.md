@@ -112,3 +112,11 @@ none recorded (it predates the rule)
   data shapes apart.
 - `#17`'s rename scope was added in a comment the lead missed when planning; read every comment
   before planning, not only the body and the last one.
+
+## 2026-11-06: [#19](https://github.com/stfngrt/t3rig/issues/19) Calmer status page
+
+- The preview host has only monospace fonts installed (`fc-match sans-serif` is Liberation Mono), so
+  screenshots there don't show the real font. `gh` can't attach images to a PR; screenshots stay
+  on the host.
+- The page showed the queue by number after #18 moved the lead to board order. A change to how
+  work is picked needs every view of the queue checked.

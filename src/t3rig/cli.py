@@ -12,7 +12,7 @@ from t3rig.rig import RigError, ago, down, log, seat_rows, select_seats, send, s
 from t3rig.skills import apply_skills, plan_skills
 from t3rig.spec import Rig, SpecError, load_rig
 from t3rig.t3 import T3Cli, T3Error
-from t3rig.watch import dispatchers, last_check, watch
+from t3rig.watch import dispatchers, last_check, watch, watch_running
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -75,6 +75,11 @@ def build_parser() -> argparse.ArgumentParser:
     log_parser.add_argument("seat", help="seat as pod.member")
     log_parser.add_argument(
         "--messages", type=int, default=10, help="how many messages to show (default: 10)"
+    )
+    log_parser.add_argument(
+        "--thread",
+        metavar="ID",
+        help="an earlier thread of this seat, such as one `down` archived, by its T3 thread id",
     )
 
     watch_parser = commands.add_parser(
@@ -154,9 +159,10 @@ def _status_text(row: dict) -> str:
 
 def _ps(rig: Rig, t3: T3Cli, as_json: bool) -> None:
     rows = seat_rows(rig, t3)
-    checked = last_check(rig)
+    checked, running = last_check(rig), watch_running(rig)
     if as_json:
-        print(json.dumps({"seats": rows, "watch_last_check": checked}, indent=2))
+        status = {"seats": rows, "watch_running": running, "watch_last_check": checked}
+        print(json.dumps(status, indent=2))
         return
     table = [("SEAT", "RUNTIME", "MODEL", "MODE", "STATUS", "UPDATED", "THREAD")]
     for row in rows:
@@ -183,8 +189,9 @@ def _ps(rig: Rig, t3: T3Cli, as_json: bool) -> None:
                 f"{row['session_name']}; using the newest",
                 file=sys.stderr,
             )
-    if dispatchers(rig):
-        print(f"watch: last check {ago(checked)}" if checked else "watch: has never run")
+    if dispatchers(rig) or rig.tracker:
+        state = "running" if running else "not running"
+        print(f"watch: {state}, " + (f"last check {ago(checked)}" if checked else "has never run"))
 
 
 def _send(rig: Rig, t3: T3Cli, args: argparse.Namespace) -> int:
@@ -245,7 +252,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         elif args.command == "send":
             return _send(rig, t3, args)
         elif args.command == "log":
-            print(log(rig, t3, args.seat, args.messages), end="")
+            print(log(rig, t3, args.seat, args.messages, args.thread), end="")
         elif args.command == "serve":
             try:
                 from t3rig.serve import serve

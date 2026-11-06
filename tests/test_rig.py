@@ -349,6 +349,21 @@ def test_log_refuses_unknown_seat_and_seat_without_thread(tmp_path: Path) -> Non
     assert t3.shown == []
 
 
+def test_log_shows_an_earlier_thread_of_the_seat(tmp_path: Path) -> None:
+    rig, t3 = make_rig(tmp_path), FakeT3()
+    t3.details["old"] = {"threadId": "old", "title": "dev-impl@r"}
+    assert log(rig, t3, "dev.impl", 2, "old") == "[assistant]\nhello from old\n"
+    assert t3.shown == [("old", 2)]
+
+
+def test_log_refuses_a_thread_of_another_seat(tmp_path: Path) -> None:
+    rig, t3 = make_rig(tmp_path), FakeT3()
+    t3.details["old"] = {"threadId": "old", "title": "dev-lead@r"}
+    with pytest.raises(RigError, match="thread old is 'dev-lead@r', not dev.impl's 'dev-impl@r'"):
+        log(rig, t3, "dev.impl", 2, "old")
+    assert t3.shown == []
+
+
 @pytest.mark.parametrize("messages", [0, -1])
 def test_log_refuses_fewer_than_one_message_before_any_t3_call(
     tmp_path: Path, messages: int

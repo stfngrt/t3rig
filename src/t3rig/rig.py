@@ -391,11 +391,20 @@ def send(
     return results
 
 
-def log(rig: Rig, t3: T3Cli, seat: str, messages: int) -> str:
-    """A seat's latest messages, as `t3 thread show` prints them."""
+def log(rig: Rig, t3: T3Cli, seat: str, messages: int, thread_id: str | None = None) -> str:
+    """A seat's latest messages, as `t3 thread show` prints them; or the earlier `thread_id`."""
     if messages < 1:
         raise RigError("--messages must be at least 1")
     (chosen,) = select_seats(rig, seat)
+    if thread_id is not None:
+        # An earlier thread isn't in `t3 thread list`, so its title is checked on the thread itself.
+        title = t3.show_thread(thread_id, messages=0).get("thread", {}).get("title")
+        if title != rig.session_name(chosen):
+            raise RigError(
+                f"thread {thread_id} is {title!r}, not {chosen.qualified_id}'s "
+                f"{rig.session_name(chosen)!r}"
+            )
+        return t3.thread_text(thread_id, messages)
     thread = next(s.thread for s in seat_statuses(rig, t3) if s.seat == chosen)
     if thread is None:
         raise RigError(f"{chosen.qualified_id} has no thread; run `t3rig up` first")

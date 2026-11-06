@@ -21,6 +21,7 @@ uv run t3rig ps examples/two-seat/rig.yaml         # status, model, mode and lin
 uv run t3rig send examples/two-seat/rig.yaml dev.impl "Hello"        # add --wait for the reply
 uv run t3rig send examples/two-seat/rig.yaml --pod dev "Hello"       # or --all for every seat
 uv run t3rig log examples/two-seat/rig.yaml dev.impl                 # latest messages; --messages N (default 10, at least 1)
+uv run t3rig log examples/two-seat/rig.yaml dev.impl --thread <id>   # an earlier thread, such as one `down` archived
 ```
 
 `validate` checks that t3rig can run the spec. `up` starts a thread for each seat that doesn't have one.
@@ -36,6 +37,12 @@ rather than proof of who sent the message.
 
 A seat's thread is the one titled `pod-member@rig` (its {term}`session name`), so renaming a thread
 disconnects it from its seat.
+
+`ps` and `log` use the newest thread with that title. `down` archives threads, and T3 doesn't list
+archived threads, so t3rig can't find a seat's earlier threads by itself. Given a thread id, for
+example from a link in an issue comment or a commit's `Rig-Session` trailer, `log --thread <id>`
+shows that thread, if T3 still serves it. It refuses a thread whose title isn't the seat's session
+name.
 
 Threads start in the T3 project's root. A seat's `cwd` must be inside a T3 project, and the seat is
 told to change to it.

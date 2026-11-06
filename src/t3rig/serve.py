@@ -24,7 +24,7 @@ from jinja2 import Environment, PackageLoader
 from t3rig.rig import RigError, ago, seat_rows
 from t3rig.spec import Rig
 from t3rig.t3 import T3Error
-from t3rig.threads import T3
+from t3rig.threads import BUSY_STATUSES, T3
 from t3rig.tracker import Issue, Tracker, tracker_for
 from t3rig.watch import (
     ANSWER_LABEL,
@@ -42,7 +42,16 @@ ALLOWED_HOSTS = [HOST, "localhost"]
 MAX_EVENTS = 200
 KEEPALIVE_SECONDS = 15
 APPROVAL_LABEL = "needs-approval"
-FRAGMENTS = ("seats", "issues", "events")
+FRAGMENTS = ("summary", "seats", "issues", "latest", "events", "health")
+ROLE_NAMES = {"lead": "Lead", "impl": "Implementer", "review": "Reviewer", "pm": "Project manager"}
+# What a seat is doing, in words, from T3's thread status. Anything else counts as idle.
+STATE_WORDS = {
+    "waiting": "waiting for you",
+    "working": "working",
+    "failed": "failed",
+    "idle": "idle",
+    "none": "not started",
+}
 
 
 def seats_with_activity(rig: Rig, t3: T3) -> list[dict[str, Any]]:
@@ -77,6 +86,69 @@ def sort_issues(issues: list[Issue]) -> dict[str, list[dict[str, Any]]]:
         elif labels & {QUEUE_LABEL, IN_PROGRESS_LABEL}:
             queue.append(_issue_row(issue))
     return {"needs_you": needs_you, "queue": queue}
+
+
+def role_name(seat_id: str) -> str:
+    """A seat's role in words, from the member part of its seat id: `dev.impl` is Implementer."""
+    role = seat_id.rsplit(".", 1)[-1]
+    return ROLE_NAMES.get(role) or role.replace("-", " ").replace("_", " ").capitalize()
+
+
+def seat_state(row: dict[str, Any]) -> str:
+    """One of STATE_WORDS's keys for a row of `seat_rows`."""
+    if row["pending_requests"]:
+        return "waiting"  # T3 holds an approval or question that only a person can answer.
+    if row["thread_id"] is None:
+        return "none"
+    if row["status"] in BUSY_STATUSES:
+        return "working"
+    return "failed" if row["status"] == "failed" else "idle"
+
+
+def _plural(count: int, one: str, many: str) -> str:
+    return f"{count} {one if count == 1 else many}"
+
+
+class PageView:
+    """The page in human terms, built from the same data as the JSON API."""
+
+    def __init__(self, rig: Rig, seats: list[dict[str, Any]], issues: dict[str, Any]) -> None:
+        self.has_tracker = issues["tracker"]
+        self.questions = [i for i in issues["needs_you"] if ANSWER_LABEL in i["labels"]]
+        self.approvals = [i for i in issues["needs_you"] if ANSWER_LABEL not in i["labels"]]
+        # The queue: the issue in progress first, then the rest in issue-number order.
+        self.queue = sorted(issues["queue"], key=lambda i: IN_PROGRESS_LABEL not in i["labels"])
+        in_progress = [i for i in self.queue if IN_PROGRESS_LABEL in i["labels"]]
+        self.current = in_progress[0] if len(in_progress) == 1 else None
+        queue_seat = rig.tracker.queue_seat if rig.tracker else None
+        self.seats = []
+        for row in seats:
+            state = seat_state(row)
+            # Only the queue seat's issue is known: it holds one `in-progress` issue at a time,
+            # including while it waits for another seat.
+            on = self.current if row["seat"] == queue_seat else None
+            self.seats.append(row | {"role": role_name(row["seat"]), "state": state, "issue": on})
+
+    def summary(self) -> list[str]:
+        waiting = [s for s in self.seats if s["state"] == "waiting"]
+        needs = len(self.questions) + len(self.approvals) + len(waiting)
+        parts = [
+            _plural(needs, "thing needs you", "things need you") if needs else "Nothing needs you"
+        ]
+        working = [s for s in self.seats if s["state"] == "working"]
+        on_issue = next((s for s in self.seats if s["issue"]), None)
+        if on_issue:
+            parts.append(f"{on_issue['role']} is working on #{on_issue['issue']['number']}")
+        elif working:
+            names = [s["role"] for s in working]
+            verb = "is" if len(names) == 1 else "are"
+            parts.append(f"{' and '.join(names)} {verb} working")
+        else:
+            parts.append("All seats are idle")
+        if self.has_tracker:
+            queued = len([i for i in self.queue if IN_PROGRESS_LABEL not in i["labels"]])
+            parts.append(f"{queued} queued" if queued else "Nothing queued")
+        return parts
 
 
 def sse_message(event: str, data: str) -> str:
@@ -115,7 +187,7 @@ class RigServer:
             )
 
     def log(self, text: str, kind: str = "watch") -> None:
-        """Print a line as `watch` does, and add it to the page's stream. Safe from any thread."""
+        """Print a line as `watch` does and add it to the activity log. Safe from any thread."""
         self.print(text)
         self.events.appendleft(
             {"time": datetime.now().astimezone().isoformat(), "kind": kind, "text": text}
@@ -173,22 +245,39 @@ class RigServer:
     def api_events(self) -> dict[str, Any]:
         return {"rig": self.rig.name, "events": list(self.events)}
 
-    def fragment(self, name: str) -> str:
-        data = {"seats": self.api_seats, "issues": self.api_issues, "events": self.api_events}
-        return self.templates.get_template(f"_{name}.html").render(**data[name]())
+    def view(self) -> PageView:
+        return PageView(self.rig, self.seats, self.api_issues())
+
+    def fragment(self, name: str, view: PageView | None = None) -> str:
+        context = {
+            "view": view or self.view(),
+            "events": list(self.events),
+            "watch_last_check": last_check(self.rig),
+            "STATE_WORDS": STATE_WORDS,
+        }
+        return self.templates.get_template(f"_{name}.html").render(**context)
 
     def page(self) -> str:
-        fragments = {name: self.fragment(name) for name in FRAGMENTS}
+        view = self.view()
+        fragments = {name: self.fragment(name, view) for name in FRAGMENTS}
         return self.templates.get_template("page.html").render(rig=self.rig.name, **fragments)
 
     async def stream(self, disconnected: Callable[[], Awaitable[bool]]) -> AsyncIterator[str]:
-        """Server-sent events: every fragment when the data changes, and a keepalive otherwise."""
+        """Server-sent events: each fragment that changed, and a keepalive when nothing did.
+
+        Unchanged fragments aren't sent, so a swap doesn't close a message someone opened.
+        """
         seen = None
+        sent: dict[str, str] = {}
         while not self.closing and not await disconnected():
             if seen != self.version:
                 seen = self.version
+                view = self.view()
                 for name in FRAGMENTS:
-                    yield sse_message(name, self.fragment(name))
+                    html = self.fragment(name, view)
+                    if sent.get(name) != html:
+                        sent[name] = html
+                        yield sse_message(name, html)
             idle = False
             async with self.changed:
                 if seen == self.version:  # Checked under the lock, so no notify is missed.

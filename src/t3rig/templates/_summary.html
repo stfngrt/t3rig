@@ -1,0 +1,1 @@
+<p class="summary">{% for part in view.summary() %}{% if not loop.first %}<span class="sep" aria-hidden="true"> · </span>{% endif %}<span>{{ part }}</span>{% endfor %}</p>

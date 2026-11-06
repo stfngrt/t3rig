@@ -352,7 +352,10 @@ class FakeTracker:
     def open_issues(self) -> list[Issue]:
         if self.error:
             raise self.error
-        return [Issue(n, f"https://t/issues/{n}", frozenset(ls)) for n, ls in self.labels.items()]
+        return [
+            Issue(n, f"https://t/issues/{n}", frozenset(ls), f"Issue {n}")
+            for n, ls in self.labels.items()
+        ]
 
     def comments(self, number: int) -> list[str]:
         self.read.append(number)

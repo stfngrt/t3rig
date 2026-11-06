@@ -1,8 +1,5 @@
-<h2>Stream</h2>
-<ul class="list events">
-  {% for e in events %}
-  <li class="{{ e.kind }}"><time datetime="{{ e.time }}">{{ e.time[11:19] }}</time> {{ e.text }}</li>
-  {% else %}
-  <li class="muted">No events yet.</li>
-  {% endfor %}
-</ul>
+{% for e in events %}
+<li class="{{ e.kind }}"><time datetime="{{ e.time }}">{{ e.time[11:19] }}</time> {{ e.text }}</li>
+{% else %}
+<li>No activity yet.</li>
+{% endfor %}

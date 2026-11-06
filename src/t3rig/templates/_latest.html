@@ -1,0 +1,1 @@
+{% if events %}{% set e = events[0] %}<time datetime="{{ e.time }}">{{ e.time[11:19] }}</time> {{ e.text }}{% else %}No activity yet.{% endif %}

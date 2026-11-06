@@ -4,13 +4,23 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from test_watch import IMPL, LEAD, FakeTracker, fake_t3, put, started
+from test_watch import IMPL, LEAD, QA, FakeTracker, fake_t3, put, started
 
 from t3rig.rig import RigError, seat_rows
-from t3rig.serve import RigServer, check_host, create_app, sort_issues, sse_message
+from t3rig.serve import (
+    FRAGMENTS,
+    RigServer,
+    check_host,
+    create_app,
+    role_name,
+    sort_issues,
+    sse_message,
+)
+from t3rig.serve_demo import demo_server
 from t3rig.spec import Edge, Rig, Seat, TrackerSettings
 from t3rig.threads import MemoryT3
 from t3rig.tracker import Issue
+from t3rig.watch import state_path
 
 
 @pytest.fixture
@@ -101,29 +111,27 @@ def test_sse_message_puts_each_line_in_a_data_field() -> None:
     assert sse_message("seats", "<p>\n</p>") == "event: seats\ndata: <p>\ndata: </p>\n\n"
 
 
-def test_stream_sends_every_fragment_then_waits_for_a_change(rig: Rig) -> None:
+def test_stream_sends_every_fragment_then_only_what_changed(rig: Rig) -> None:
     server, _, _ = make_server(rig)
     server.refresh()
 
-    async def first_messages() -> list[str]:
+    async def messages() -> list[str]:
         async def connected() -> bool:
             return False
 
         stream = server.stream(connected)
-        messages = [await anext(stream) for _ in range(3)]
+        sent = [await anext(stream) for _ in FRAGMENTS]
         waiting = asyncio.ensure_future(anext(stream))
         await asyncio.sleep(0)
+        server.log("pinged dev.lead: dev.impl")
         await server.notify()
-        messages.append(await waiting)
-        return messages
+        sent.append(await waiting)
+        sent.append(await anext(stream))
+        return sent
 
-    messages = asyncio.run(first_messages())
-    assert [m.split("\n")[0] for m in messages] == [
-        "event: seats",
-        "event: issues",
-        "event: events",
-        "event: seats",
-    ]
+    names = [m.split("\n")[0].removeprefix("event: ") for m in asyncio.run(messages())]
+    # The seats and issues didn't change, so an open "more" in a seat card isn't swapped shut.
+    assert names == [*FRAGMENTS, "latest", "events"]
 
 
 def test_watch_runs_inside_the_server(rig: Rig) -> None:
@@ -156,11 +164,11 @@ def test_closing_ends_open_streams(rig: Rig) -> None:
         count = 0
         async for _ in stream:
             count += 1
-            if count == 3:
+            if count == len(FRAGMENTS):
                 server.close_streams()
         return count
 
-    assert asyncio.run(asyncio.wait_for(drain(), 5)) == 3
+    assert asyncio.run(asyncio.wait_for(drain(), 5)) == len(FRAGMENTS)
 
 
 def test_only_localhost_names_are_answered(rig: Rig) -> None:
@@ -221,3 +229,107 @@ def test_wildcard_hosts_are_refused(host: str) -> None:
 def test_concrete_hosts_are_accepted() -> None:
     for host in ("127.0.0.1", "192.168.5.10", "fe80::1", "box.local"):
         check_host(host)
+
+
+def page_of(server: RigServer) -> str:
+    return http_client(server).get("/").text
+
+
+def test_roles_are_named_in_words() -> None:
+    assert role_name("dev.lead") == "Lead"
+    assert role_name("dev.impl") == "Implementer"
+    assert role_name("dev.review") == "Reviewer"
+    assert role_name("dev.pm") == "Project manager"
+    assert role_name("ops.release-manager") == "Release manager"
+
+
+def test_seat_cards_show_role_state_and_the_leads_issue(rig: Rig) -> None:
+    server, t3, tracker = make_server(rig)
+    put(t3, IMPL, 2, status="running")
+    put(t3, QA, 2, status="running", pending=1)
+    tracker.labels[9] = {"rig-queue", "in-progress"}
+    assert server.watcher is not None
+    server.watcher.poll_tracker()
+    server.refresh()
+    seats = server.fragment("seats")
+    assert "<h3>Lead</h3>" in seats and "<h3>Implementer</h3>" in seats and "<h3>Qa</h3>" in seats
+    assert 'state-working"><span class="dot" aria-hidden="true"></span>working' in seats
+    assert "waiting for you" in seats and "idle" in seats
+    assert 'On <a href="https://t/issues/9">#9 Issue 9</a>' in seats
+
+
+def test_long_messages_fold_behind_more(rig: Rig) -> None:
+    server, t3, _ = make_server(rig)
+    t3.say(f"id-{IMPL}", "line\n" * 10)
+    server.refresh()
+    seats = server.fragment("seats")
+    assert seats.count('<details class="message">') == 1  # Short replies stay plain.
+    assert '<span class="more">more</span>' in seats
+
+
+def test_summary_counts_what_needs_the_operator(rig: Rig) -> None:
+    server, t3, tracker = make_server(rig)
+    put(t3, QA, 2, status="running", pending=1)
+    tracker.labels.update(
+        {
+            3: {"needs-answer"},
+            4: {"needs-approval"},
+            5: {"needs-approval", "rig-queue"},
+            9: {"rig-queue", "in-progress"},
+        }
+    )
+    assert server.watcher is not None
+    server.watcher.poll_tracker()
+    server.refresh()
+    summary = server.fragment("summary")
+    assert "3 things need you" in summary  # A question, an approval and a waiting seat.
+    assert "Lead is working on #9" in summary and "1 queued" in summary
+
+
+def test_needs_you_is_split_and_shows_no_label_names(rig: Rig) -> None:
+    server, _, tracker = make_server(rig)
+    tracker.labels.update({3: {"needs-answer"}, 4: {"needs-approval"}, 9: {"in-progress"}})
+    assert server.watcher is not None
+    server.watcher.poll_tracker()
+    server.refresh()
+    issues = server.fragment("issues")
+    questions, rest = issues.split("Waiting for your approval")
+    approvals, queue = rest.split("<h2>Queue")
+    assert "by issue number" in queue
+    assert '<a href="https://t/issues/3"><span class="num">#3</span> Issue 3</a>' in questions
+    assert "#4" in approvals and "#3" not in approvals
+    assert 'class="current"' in queue and "in progress" in queue
+    for label in ("needs-answer", "needs-approval", "in-progress", "rig-queue"):
+        assert label not in issues
+
+
+def test_activity_log_is_collapsed_to_its_latest_line(rig: Rig) -> None:
+    server, _, _ = make_server(rig)
+    server.log("first")
+    server.log("pinged dev.lead: dev.impl")
+    server.refresh()
+    page = page_of(server)
+    assert '<details class="log">' in page  # Closed until opened.
+    latest = server.fragment("latest")
+    assert "pinged dev.lead: dev.impl" in latest and "first" not in latest
+    events = server.fragment("events")
+    assert events.index("pinged dev.lead") < events.index("first")  # Newest first.
+    # The swapped parts sit inside the <details>, so a swap can't close an open log.
+    assert page.index('<details class="log">') < page.index('sse-swap="latest"')
+    assert page.index('<details class="log">') < page.index('sse-swap="events"')
+
+
+def test_demo_shows_every_state_without_real_t3(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "unused"))  # Restored after the test.
+    server = demo_server(tmp_path)
+    assert server.watcher is not None
+    server.watcher.step()
+    server.refresh()
+    page = page_of(server)
+    for word in ("working", "idle", "waiting for you", "failed"):
+        assert f"</span>{word}</p>" in page
+    assert "Questions for you" in page and "#7" in page and "#13" in page
+    assert "Lead is working on #9" in page
+    assert state_path(server.rig).is_relative_to(tmp_path)

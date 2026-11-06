@@ -1,17 +1,22 @@
-{% macro issue_list(items, empty) %}
-<ul class="list">
+{% macro issue_list(items, empty, mark_current=False) %}
+<ul class="issues">
   {% for i in items %}
-  <li><a href="{{ i.url }}">{{ i.url }}</a><br>{{ i.title }} <span class="labels">{{ i.labels|join(", ") }}</span></li>
+  <li{% if mark_current and "in-progress" in i.labels %} class="current"{% endif %}>
+    <a href="{{ i.url }}"><span class="num">#{{ i.number }}</span> {{ i.title }}</a>
+    {% if mark_current and "in-progress" in i.labels %}<span class="tag">in progress</span>{% endif %}
+  </li>
   {% else %}
-  <li class="muted">{{ empty }}</li>
+  <li class="empty">{{ empty }}</li>
   {% endfor %}
 </ul>
 {% endmacro %}
-{% if tracker %}
-<h2>Needs you</h2>
-{{ issue_list(needs_you, "Nothing waiting for you.") }}
-<h2>Queue</h2>
-{{ issue_list(queue, "Nothing queued.") }}
+{% if view.has_tracker %}
+<h2>Questions for you</h2>
+{{ issue_list(view.questions, "No questions.") }}
+<h2>Waiting for your approval</h2>
+{{ issue_list(view.approvals, "Nothing to approve.") }}
+<h2>Queue <span class="note">by issue number</span></h2>
+{{ issue_list(view.queue, "Nothing queued.", True) }}
 {% else %}
 <h2>Issues</h2>
 <p class="muted">No tracker set in rig.t3rig.yaml.</p>

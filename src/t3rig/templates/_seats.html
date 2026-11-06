@@ -1,24 +1,31 @@
 <h2>Seats</h2>
 <div class="cards">
-  {% for s in seats %}
-  {% set status = ("needs input (%d)" % s.pending_requests) if s.pending_requests else s.status %}
+  {% for s in view.seats %}
   <article class="card">
     <header>
-      <strong>{{ s.seat }}</strong>
-      <span class="badge s-{{ "needs-input" if s.pending_requests else s.status|replace(" ", "-") }}">{{ status }}</span>
+      <div>
+        <h3>{{ s.role }}</h3>
+        <p class="seat-id">{{ s.seat }}</p>
+      </div>
+      <p class="state state-{{ s.state }}"><span class="dot" aria-hidden="true"></span>{{ STATE_WORDS[s.state] }}</p>
     </header>
-    <dl>
-      <dt>Model</dt><dd>{{ s.model or "-" }}</dd>
-      <dt>Mode</dt><dd>{{ s.mode or "-" }}</dd>
-      <dt>Updated</dt><dd>{{ s.updated_at|ago }}</dd>
-    </dl>
-    {% if s.last_activity %}
-    <p class="activity"><span class="role">{{ s.last_activity.role }}:</span> {{ s.last_activity.text }}</p>
+    {% if s.issue %}
+    <p class="on">On <a href="{{ s.issue.url }}">#{{ s.issue.number }} {{ s.issue.title }}</a></p>
     {% endif %}
-    {% if s.link %}<a href="{{ s.link }}">Open thread</a>{% endif %}
+    {% if s.last_activity and s.last_activity.text %}
+    {% set text = s.last_activity.text %}
+    {% if text|length > 240 or text.count("\n") > 2 %}
+    <details class="message">
+      <summary><span class="clamp">{{ text }}</span><span class="more">more</span><span class="less">less</span></summary>
+      <p class="full">{{ text }}</p>
+    </details>
+    {% else %}
+    <p class="message">{{ text }}</p>
+    {% endif %}
+    {% endif %}
+    <p class="meta">{{ s.model or "default model" }}{% if s.mode %} · {{ s.mode }}{% endif %}{% if s.link %} · <a href="{{ s.link }}">Open thread</a>{% endif %}</p>
   </article>
   {% else %}
   <p class="muted">Reading the seats…</p>
   {% endfor %}
 </div>
-<p class="muted">watch: {% if watch_last_check %}last check {{ watch_last_check|ago }}{% else %}has never run{% endif %}</p>

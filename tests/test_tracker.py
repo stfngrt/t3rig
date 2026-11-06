@@ -25,9 +25,10 @@ def fake_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str, output:
 def test_github_lists_open_issues_with_labels(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    rows = [{"number": 7, "url": "https://g/7", "labels": [{"name": "rig-queue", "id": "x"}]}]
+    labels = [{"name": "rig-queue", "id": "x"}]
+    rows = [{"number": 7, "title": "T", "url": "https://g/7", "labels": labels}]
     log = fake_cli(tmp_path, monkeypatch, "gh", rows)
-    assert GitHub("o/r").open_issues() == [Issue(7, "https://g/7", frozenset({"rig-queue"}))]
+    assert GitHub("o/r").open_issues() == [Issue(7, "https://g/7", frozenset({"rig-queue"}), "T")]
     args = log.read_text().split()
     assert args[:2] == ["issue", "list"] and "o/r" in args and "open" in args
 
@@ -41,9 +42,10 @@ def test_github_reads_comment_bodies(tmp_path: Path, monkeypatch: pytest.MonkeyP
 def test_gitlab_lists_open_issues_with_labels(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    rows = [{"iid": 3, "web_url": "https://l/3", "labels": ["needs-answer"]}]
+    rows = [{"iid": 3, "title": "T", "web_url": "https://l/3", "labels": ["needs-answer"]}]
     log = fake_cli(tmp_path, monkeypatch, "glab", rows)
-    assert GitLab("g/p").open_issues() == [Issue(3, "https://l/3", frozenset({"needs-answer"}))]
+    expected = [Issue(3, "https://l/3", frozenset({"needs-answer"}), "T")]
+    assert GitLab("g/p").open_issues() == expected
     args = log.read_text().split()
     assert args[:2] == ["issue", "list"] and "g/p" in args and "json" in args
 

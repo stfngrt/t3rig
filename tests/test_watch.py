@@ -413,8 +413,20 @@ def test_queued_issue_pings_the_queue_seat_once(rig: Rig) -> None:
 
 def test_issue_already_queued_on_first_sight_pings_once(rig: Rig) -> None:
     watcher, t3, tracker, _ = issue_watcher(rig)
+    tracker.labels[5] = {"rig-queue"}
+    watcher.poll_tracker()
+    watcher.poll_tracker()
+    assert len(t3.sent) == 1
+
+
+def test_issue_already_in_progress_on_first_sight_does_not_ping(rig: Rig) -> None:
+    watcher, t3, tracker, _ = issue_watcher(rig)
     tracker.labels[5] = {"rig-queue", "in-progress"}
     watcher.poll_tracker()
+    assert t3.sent == []
+    tracker.labels[5] = {"in-progress"}  # Requeued later: a fresh approval, so it pings.
+    watcher.poll_tracker()
+    tracker.labels[5] = {"rig-queue", "in-progress"}
     watcher.poll_tracker()
     assert len(t3.sent) == 1
 

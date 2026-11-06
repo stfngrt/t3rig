@@ -83,9 +83,10 @@ It detects both by comparing each issue's labels with the ones it remembers in i
 signature at that moment. Reading it later would find `dev.pm`'s signed answer instead.
 
 Two conservative choices: an issue already carrying `rig-queue` when `watch` first sees it is pinged
-once, so queued work isn't missed, and an issue `watch` never saw with `needs-answer` gives no
-answer ping. A closed issue is forgotten, and a ping names the issue by its full URL. Failed pings
-retry and alert as seat pings do. `watch` never changes labels or writes comments.
+once, so queued work isn't missed, unless it also has `in-progress` (decided on #15), and an issue
+`watch` never saw with `needs-answer` gives no answer ping. A closed issue is forgotten, and a ping
+names the issue by its full URL. Failed pings retry and alert as seat pings do. `watch` never
+changes labels or writes comments.
 
 ## People and roles
 

@@ -68,3 +68,11 @@ none recorded (it predates the rule)
   lead's thread, so every such line has to point at the issue instead; check for it when vendoring.
 - `#17` was queued while its blocker `#16` was still waiting for approval. The lead split off the
   part that didn't depend on it.
+
+## 2026-11-06: [#16](https://github.com/stfngrt/t3rig/issues/16) `t3rig serve`
+
+- Review found that the in-server watch loop could die silently and that the localhost page was
+  open to DNS rebinding. Neither was in the issue. Applied: the reviewer's role now checks long-running
+  loops and network listeners for both.
+- `serve` couldn't be tried on the real rig while `t3rig watch` held its lock, and nobody opened the
+  page in a browser. A UI change needs a person to look at it before it's called done.

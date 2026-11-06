@@ -1,0 +1,18 @@
+{% macro issue_list(items, empty) %}
+<ul class="list">
+  {% for i in items %}
+  <li><a href="{{ i.url }}">{{ i.url }}</a><br>{{ i.title }} <span class="labels">{{ i.labels|join(", ") }}</span></li>
+  {% else %}
+  <li class="muted">{{ empty }}</li>
+  {% endfor %}
+</ul>
+{% endmacro %}
+{% if tracker %}
+<h2>Needs you</h2>
+{{ issue_list(needs_you, "Nothing waiting for you.") }}
+<h2>Queue</h2>
+{{ issue_list(queue, "Nothing queued.") }}
+{% else %}
+<h2>Issues</h2>
+<p class="muted">No tracker set in rig.t3rig.yaml.</p>
+{% endif %}

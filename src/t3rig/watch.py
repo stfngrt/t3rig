@@ -49,6 +49,7 @@ CLOSING = (
 )
 QUEUE_LABEL = "rig-queue"
 ANSWER_LABEL = "needs-answer"
+IN_PROGRESS_LABEL = "in-progress"
 SIGNATURE = re.compile(r"^\s*🤖\s*([\w.-]+)", re.M)
 ISSUE_CLOSING = "Read each issue above and its comments before you act on it."
 
@@ -234,9 +235,14 @@ class Watcher:
         out: Callable[[str], None] = print,
         connect: Callable[[], tuple[Tools, str]] | None = None,
         tracker: Tracker | None = None,
+        tracker_interval: float = 60,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.rig, self.t3, self.path, self.out = rig, t3, path, out
         self.connect, self.tracker = connect, tracker
+        self.tracker_interval, self.clock = tracker_interval, clock
+        self.next_poll = clock()
+        self.issues: list[Issue] = []  # Open issues from the last tracker poll.
         self.dispatchers = dispatchers(rig)
         self.state = load_state(path)
         self.failures: dict[tuple[str, str], int] = {}
@@ -260,8 +266,6 @@ class Watcher:
         issues = self.state.setdefault("issues", {})
         entry = issues.setdefault(key, {QUEUE_LABEL: False, ANSWER_LABEL: False, "asker": None})
         entry.update(updates)
-        if not entry[QUEUE_LABEL] and not entry[ANSWER_LABEL]:
-            del issues[key]  # Forgetting it is the same as never having seen either label.
 
     def _deliver(
         self,
@@ -313,7 +317,10 @@ class Watcher:
             line = f"- {text}: {issue.url}"
             events.append(Event(f"#{key}", "", seat, line, change, issue=key))
 
-        if QUEUE_LABEL in issue.labels and not queued:
+        under_way = entry is None and IN_PROGRESS_LABEL in issue.labels
+        if QUEUE_LABEL in issue.labels and not queued and under_way:
+            updates[QUEUE_LABEL] = True  # First seen with work already under way: no ping.
+        elif QUEUE_LABEL in issue.labels and not queued:
             ping(queue_seat, f"An issue was queued with `{QUEUE_LABEL}`", {QUEUE_LABEL: True})
         elif QUEUE_LABEL not in issue.labels and queued:
             updates[QUEUE_LABEL] = False
@@ -324,14 +331,14 @@ class Watcher:
             seat = (entry or {}).get("asker") or queue_seat
             text = f"The operator answered, and `{ANSWER_LABEL}` was removed"
             ping(seat, text, {ANSWER_LABEL: False, "asker": None})
-        if updates:
-            self._apply_issue(key, updates)
+        self._apply_issue(key, updates)  # Even with none, so the issue counts as seen.
         return events
 
     def poll_tracker(self) -> None:
         """Ping when an open issue gains `rig-queue` or loses `needs-answer`."""
         assert self.tracker is not None
         issues = self.tracker.open_issues()
+        self.issues = issues
         known = self.state.setdefault("issues", {})
         open_keys = {str(issue.number) for issue in issues}
         for key in [key for key in known if key not in open_keys]:
@@ -372,9 +379,27 @@ class Watcher:
         self.state["updated_at"] = datetime.now(UTC).isoformat()
         save_state(self.path, self.state)
 
+    def step(self) -> None:
+        """One round of `watch`: check the seats, and the tracker when it's due."""
+        try:
+            self.tick()
+        except T3Error as error:
+            self.out(f"can't read seats, will retry: {error}")
+        if self.tracker is not None and self.clock() >= self.next_poll:
+            self.next_poll = self.clock() + self.tracker_interval
+            try:
+                self.poll_tracker()
+            except (T3Error, TrackerError) as error:
+                self.out(f"can't read the tracker, will retry: {error}")
+
+
+def check_watchable(rig: Rig) -> None:
+    if not dispatchers(rig) and rig.tracker is None:
+        raise RigError(f"rig {rig.name} has no delegates_to edges, so there's nobody to ping")
+
 
 @contextmanager
-def _single_watcher(path: Path) -> Iterator[None]:
+def single_watcher(path: Path) -> Iterator[None]:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path.with_suffix(".lock"), "w") as lock:
         try:
@@ -395,24 +420,15 @@ def watch(
     make_tracker: Callable[..., Tracker] = tracker_for,
     clock: Callable[[], float] = time.monotonic,
 ) -> None:
-    if not dispatchers(rig) and rig.tracker is None:
-        raise RigError(f"rig {rig.name} has no delegates_to edges, so there's nobody to ping")
+    check_watchable(rig)
     path = state_path(rig)
     tracker = make_tracker(rig.tracker) if rig.tracker else None
-    with _single_watcher(path):
-        watcher = Watcher(rig, t3, path, out, connect_mcp, tracker)
-        next_poll = clock()
+    with single_watcher(path):
+        watcher = Watcher(
+            rig, t3, path, out, connect_mcp, tracker, tracker_interval=tracker_interval, clock=clock
+        )
         while True:
-            try:
-                watcher.tick()
-            except T3Error as error:
-                out(f"can't read seats, will retry: {error}")
-            if tracker is not None and clock() >= next_poll:
-                next_poll = clock() + tracker_interval
-                try:
-                    watcher.poll_tracker()
-                except (T3Error, TrackerError) as error:
-                    out(f"can't read the tracker, will retry: {error}")
+            watcher.step()
             if once:
                 return
             sleep(interval)

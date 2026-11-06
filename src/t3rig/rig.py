@@ -6,6 +6,7 @@ import time
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -88,6 +89,17 @@ def seat_rows(rig: Rig, t3: T3Cli) -> list[dict[str, Any]]:
             }
         )
     return rows
+
+
+def ago(timestamp: str | None) -> str:
+    """How long ago an ISO timestamp was, as `ps` shows it."""
+    if not timestamp:
+        return "-"
+    seconds = int((datetime.now(UTC) - datetime.fromisoformat(timestamp)).total_seconds())
+    for size, unit in ((86400, "d"), (3600, "h"), (60, "m")):
+        if seconds >= size:
+            return f"{seconds // size}{unit} ago"
+    return f"{max(seconds, 0)}s ago"
 
 
 def t3rig_command(*arguments: str) -> str:

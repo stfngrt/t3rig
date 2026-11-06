@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>t3rig: {{ rig }}</title>
+  <script src="/static/htmx.min.js"></script>
+  <script src="/static/sse.js"></script>
+  <style>
+    :root { --bg: #f7f7f5; --card: #fff; --text: #1d1d1b; --muted: #6b6b66; --line: #e2e2dd;
+            --accent: #2563eb; --ok: #15803d; --busy: #b45309; --bad: #b91c1c; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #161615; --card: #20201e; --text: #ececea; --muted: #9a9a94; --line: #34342f;
+              --accent: #7aa2f7; --ok: #4ade80; --busy: #fbbf24; --bad: #f87171; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text);
+           font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    main { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }
+    h1 { font-size: 1.4rem; margin: 0 0 16px; }
+    h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+         margin: 24px 0 8px; }
+    a { color: var(--accent); }
+    .layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 24px; }
+    @media (max-width: 800px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+    .card header { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+    .badge { font-size: .8rem; padding: 1px 8px; border-radius: 999px; border: 1px solid currentColor; }
+    .s-completed { color: var(--ok); } .s-running, .s-starting, .s-queued, .s-preparing { color: var(--busy); }
+    .s-failed, .s-needs-input, .s-interrupted, .s-cancelled { color: var(--bad); }
+    dl { display: grid; grid-template-columns: auto 1fr; gap: 0 12px; margin: 8px 0; font-size: .85rem; }
+    dt { color: var(--muted); } dd { margin: 0; overflow-wrap: anywhere; }
+    .activity { font-size: .85rem; white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0;
+                display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+    .role { color: var(--muted); }
+    ul.list { list-style: none; margin: 0; padding: 0; }
+    ul.list li { background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+                 padding: 8px 12px; margin-bottom: 6px; overflow-wrap: anywhere; }
+    .labels { color: var(--muted); font-size: .8rem; }
+    .events li { font-size: .85rem; }
+    .muted, .events time { color: var(--muted); }
+    .events .error { color: var(--bad); }
+  </style>
+</head>
+<body hx-ext="sse" sse-connect="/api/stream">
+  <main>
+    <!-- One section per rig, so a multi-rig view can list several. -->
+    <section class="rig" data-rig="{{ rig }}">
+      <h1>{{ rig }}</h1>
+      <div class="layout">
+        <div id="seats" sse-swap="seats">{{ seats|safe }}</div>
+        <div>
+          <div id="issues" sse-swap="issues">{{ issues|safe }}</div>
+          <div id="events" sse-swap="events">{{ events|safe }}</div>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

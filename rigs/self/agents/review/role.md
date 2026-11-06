@@ -14,6 +14,9 @@ culture's review rules).
 Check any new term in a change against `docs/glossary.md`: it should use the preferred word, not an
 _Avoid_ one.
 
+When a change adds a long-running loop or a network listener, check that a failing round can't stop
+it silently, and that the listener checks who it answers (`Host`, origin, login).
+
 Report only real problems: bugs, missing tests, or changes that don't match the request. For each,
 give `path:line` and why it matters. If there are none, say so plainly. `t3rig watch` tells dev.lead
 when you finish, so end with your findings and don't try to message anyone.

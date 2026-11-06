@@ -57,6 +57,12 @@ Map `permission_policy` to T3 modes, set effort, and interrupt or archive seats.
 agent remembering.
 :::
 
+:::{grid-item-card} Status page
+:link: serve
+:link-type: doc
+`serve` runs `watch` as a server, with a live, read-only page of seats, issues and pings.
+:::
+
 :::{grid-item-card} Skills
 :link: skills
 :link-type: doc
@@ -78,6 +84,7 @@ getting-started
 rig-specs
 permissions
 watch
+serve
 skills
 limits
 ```

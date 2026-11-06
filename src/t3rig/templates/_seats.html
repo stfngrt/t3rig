@@ -1,0 +1,24 @@
+<h2>Seats</h2>
+<div class="cards">
+  {% for s in seats %}
+  {% set status = ("needs input (%d)" % s.pending_requests) if s.pending_requests else s.status %}
+  <article class="card">
+    <header>
+      <strong>{{ s.seat }}</strong>
+      <span class="badge s-{{ "needs-input" if s.pending_requests else s.status|replace(" ", "-") }}">{{ status }}</span>
+    </header>
+    <dl>
+      <dt>Model</dt><dd>{{ s.model or "-" }}</dd>
+      <dt>Mode</dt><dd>{{ s.mode or "-" }}</dd>
+      <dt>Updated</dt><dd>{{ s.updated_at|ago }}</dd>
+    </dl>
+    {% if s.last_activity %}
+    <p class="activity"><span class="role">{{ s.last_activity.role }}:</span> {{ s.last_activity.text }}</p>
+    {% endif %}
+    {% if s.link %}<a href="{{ s.link }}">Open thread</a>{% endif %}
+  </article>
+  {% else %}
+  <p class="muted">Reading the seats…</p>
+  {% endfor %}
+</div>
+<p class="muted">watch: {% if watch_last_check %}last check {{ watch_last_check|ago }}{% else %}has never run{% endif %}</p>

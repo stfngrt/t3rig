@@ -20,6 +20,7 @@ class Issue:
     number: int
     url: str
     labels: frozenset[str]
+    title: str = ""
 
 
 class Tracker(Protocol):
@@ -53,10 +54,15 @@ class GitHub:
         # shortcut: at most 1000 open issues are seen; page with `gh api` if a repo has more.
         rows = _run_json(
             ["gh", "issue", "list", "--repo", self.repo, "--state", "open", "--limit", "1000"]
-            + ["--json", "number,url,labels"]
+            + ["--json", "number,title,url,labels"]
         )
         return [
-            Issue(row["number"], row["url"], frozenset(label["name"] for label in row["labels"]))
+            Issue(
+                row["number"],
+                row["url"],
+                frozenset(label["name"] for label in row["labels"]),
+                row["title"],
+            )
             for row in rows
         ]
 
@@ -76,7 +82,10 @@ class GitLab:
         rows = _run_json(
             ["glab", "issue", "list", "--repo", self.repo, "--per-page", "100", "--output", "json"]
         )
-        return [Issue(row["iid"], row["web_url"], frozenset(row["labels"])) for row in rows]
+        return [
+            Issue(row["iid"], row["web_url"], frozenset(row["labels"]), row["title"])
+            for row in rows
+        ]
 
     def comments(self, number: int) -> list[str]:
         # shortcut: only the newest 100 notes are read; page if older ones are ever needed.

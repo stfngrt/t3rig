@@ -22,7 +22,8 @@ If the rig has a tracker in `rig.t3rig.yaml` (see {doc}`rig-specs`), `watch` als
 issues and pings for two changes, and nothing else:
 
 - An issue gains {term}`rig-queue`: it pings the tracker's `queue_seat`. An issue that already has
-  the label when `watch` first sees it is pinged once, so queued work isn't missed.
+  the label when `watch` first sees it, for example after a restart, is pinged once, so queued work
+  isn't missed, unless it also has {term}`in-progress`: that work is already under way.
 - {term}`needs-answer` is removed from an open issue: it pings the seat named in the `🤖 <seat>`
   signature of the question comment, the newest signed comment when `watch` first saw the label, or
   `queue_seat` if there's none. An issue it never saw with the label gives no ping. When `dev.pm`

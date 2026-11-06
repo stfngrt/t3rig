@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 
 from t3rig import __version__
 from t3rig.mcp import ACCESS_LEVELS, login
-from t3rig.rig import RigError, down, log, seat_rows, select_seats, send, stop, up
+from t3rig.rig import RigError, ago, down, log, seat_rows, select_seats, send, stop, up
 from t3rig.skills import apply_skills, plan_skills
 from t3rig.spec import Rig, SpecError, load_rig
 from t3rig.t3 import T3Cli, T3Error
@@ -93,6 +93,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="seconds between issue tracker checks, if rig.t3rig.yaml sets one (default: 60)",
     )
     watch_parser.add_argument("--once", action="store_true", help="check once and exit")
+
+    serve_parser = commands.add_parser(
+        "serve",
+        help="Run watch as a server, with a live read-only status page on 127.0.0.1. "
+        "Needs the serve extra: pip install 't3rig[serve]'.",
+    )
+    serve_parser.add_argument("rig", help="path to rig.yaml")
+    serve_parser.add_argument(
+        "--port", type=int, default=8765, help="port on 127.0.0.1 (default: 8765)"
+    )
+    serve_parser.add_argument(
+        "--interval", type=float, default=15, help="seconds between seat checks (default: 15)"
+    )
+    serve_parser.add_argument(
+        "--tracker-interval",
+        type=float,
+        default=60,
+        help="seconds between issue tracker checks, if rig.t3rig.yaml sets one (default: 60)",
+    )
     return parser
 
 
@@ -124,16 +143,6 @@ def _up(rig: Rig, t3: T3Cli, yes: bool) -> int:
     return 0
 
 
-def _ago(timestamp: str | None) -> str:
-    if not timestamp:
-        return "-"
-    seconds = int((datetime.now(UTC) - datetime.fromisoformat(timestamp)).total_seconds())
-    for size, unit in ((86400, "d"), (3600, "h"), (60, "m")):
-        if seconds >= size:
-            return f"{seconds // size}{unit} ago"
-    return f"{max(seconds, 0)}s ago"
-
-
 def _status_text(row: dict) -> str:
     pending = row["pending_requests"]
     return f"needs input ({pending})" if pending else row["status"]
@@ -154,7 +163,7 @@ def _ps(rig: Rig, t3: T3Cli, as_json: bool) -> None:
                 row["model"] or "-",
                 row["mode"] or "-",
                 _status_text(row),
-                _ago(row["updated_at"]),
+                ago(row["updated_at"]),
                 row["link"] or "-",
             )
         )
@@ -171,7 +180,7 @@ def _ps(rig: Rig, t3: T3Cli, as_json: bool) -> None:
                 file=sys.stderr,
             )
     if dispatchers(rig):
-        print(f"watch: last check {_ago(checked)}" if checked else "watch: has never run")
+        print(f"watch: last check {ago(checked)}" if checked else "watch: has never run")
 
 
 def _send(rig: Rig, t3: T3Cli, args: argparse.Namespace) -> int:
@@ -233,6 +242,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _send(rig, t3, args)
         elif args.command == "log":
             print(log(rig, t3, args.seat, args.messages), end="")
+        elif args.command == "serve":
+            try:
+                from t3rig.serve import serve
+            except ModuleNotFoundError as error:
+                raise RigError(
+                    f"serve needs the serve extra ({error.name} is missing): "
+                    "pip install 't3rig[serve]'"
+                ) from error
+            serve(rig, t3, args.port, args.interval, args.tracker_interval)
         elif args.command == "watch":
             watch(
                 rig,

@@ -66,3 +66,22 @@ def test_t3code_signs_in_once_and_again_after_a_failure() -> None:
     tools.fail = False
     t3.archive("a")
     assert len(connects) == 2
+
+
+def test_memory_t3_lists_only_what_t3_thread_list_gives(tmp_path: Path) -> None:
+    t3 = memory(tmp_path)
+    t3.put("dev-impl@r", threadId="i", status="running", pendingRequestCount=1, runCount=3)
+    (listed,) = t3.list_threads(str(tmp_path))
+    assert "pendingRequestCount" not in listed and "runCount" not in listed
+    shown = t3.show_thread("i")["thread"]
+    assert shown["pendingRequestCount"] == 1 and shown["runCount"] == 3
+
+
+def test_memory_t3_refuses_to_send_to_an_archived_or_unknown_thread(tmp_path: Path) -> None:
+    t3 = memory(tmp_path)
+    t3.put("dev-impl@r", threadId="i")
+    t3.archive("i")
+    for thread_id in ("i", "nope"):
+        with pytest.raises(T3Error, match="no longer available"):
+            t3.send(thread_id, "hi")
+    assert t3.sent == []

@@ -557,3 +557,135 @@ def test_signature_with_a_thread_link_still_names_the_seat(rig: Rig) -> None:
     tracker.labels[5] = set()
     watcher.poll_tracker()
     assert t3.sent[0][0] == f"id-{IMPL}"
+
+
+def noticed(rig: Rig, notify_seat: str | None = "dev.qa") -> tuple[Watcher, MemoryT3, FakeTracker]:
+    """A watcher whose notify seat is dev.qa, after a first poll of a quiet tracker."""
+    t3, tracker = fake_t3(), FakeTracker()
+    started(t3)
+    rig = Rig(
+        name=rig.name,
+        path=rig.path,
+        seats=rig.seats,
+        edges=rig.edges,
+        tracker=TrackerSettings("github", "o/r", "dev.lead"),
+        notify_seat=notify_seat,
+    )
+    watcher = Watcher(rig, t3, state_path(rig), lambda line: None, tracker)
+    watcher.poll_tracker()
+    return watcher, t3, tracker
+
+
+def notices(t3: MemoryT3) -> list[str]:
+    return [
+        line
+        for to, message, _ in t3.sent
+        if to == f"id-{QA}"
+        for line in message.splitlines()
+        if line.startswith("- ")
+    ]
+
+
+def test_a_question_from_another_seat_is_noticed_once(rig: Rig) -> None:
+    watcher, t3, tracker = noticed(rig)
+    tracker.labels[5] = {"needs-answer"}
+    tracker.notes[5] = ["🤖 dev.lead (t3rig) · https://t3/lead\nOpen decisions"]
+    watcher.poll_tracker()
+    watcher.poll_tracker()
+    assert notices(t3) == ["- #5 needs you: questions from dev.lead https://t/issues/5"]
+    assert "Follow up on each as your role says" in t3.sent[-1][1]
+
+
+def test_the_notify_seats_own_question_is_not_noticed(rig: Rig) -> None:
+    watcher, t3, tracker = noticed(rig)
+    tracker.labels[5] = {"needs-answer"}
+    tracker.notes[5] = ["🤖 dev.qa (t3rig)\nQuestions"]
+    watcher.poll_tracker()
+    assert notices(t3) == []
+
+
+def test_an_unsigned_question_is_noticed(rig: Rig) -> None:
+    watcher, t3, tracker = noticed(rig)
+    tracker.labels[5] = {"needs-answer"}
+    watcher.poll_tracker()
+    assert notices(t3) == ["- #5 needs you: questions https://t/issues/5"]
+
+
+def test_questions_already_there_on_the_first_poll_are_not_noticed(rig: Rig) -> None:
+    t3, tracker = fake_t3(), FakeTracker()
+    started(t3)
+    tracker.labels[5] = {"needs-answer"}
+    rig = Rig(
+        name="r",
+        path=rig.path,
+        seats=rig.seats,
+        edges=rig.edges,
+        tracker=TrackerSettings("github", "o/r", "dev.lead"),
+        notify_seat="dev.qa",
+    )
+    Watcher(rig, t3, state_path(rig), lambda line: None, tracker).poll_tracker()
+    assert notices(t3) == []
+
+
+def test_a_tracked_issue_closing_is_noticed_and_an_untracked_one_is_not(rig: Rig) -> None:
+    watcher, t3, tracker = noticed(rig)
+    tracker.labels[5] = {"rig-queue", "in-progress"}
+    watcher.poll_tracker()
+    del tracker.labels[5]
+    watcher.poll_tracker()
+    watcher.poll_tracker()
+    assert notices(t3) == ["- #5 closed: Issue 5 https://t/issues/5"]
+
+
+def test_an_alert_is_noticed_once_however_often_it_repeats(rig: Rig) -> None:
+    watcher, t3, _ = noticed(rig)
+    watcher.tick()
+    t3.threads = [t for t in t3.threads if t["title"] != LEAD]  # dev.impl's dispatcher is gone.
+    put(t3, IMPL, 2)
+    for _ in range(5):
+        watcher.tick()
+    (alert,) = notices(t3)
+    assert alert.startswith("- ALERT: can't ping dev.lead about dev.impl (try 3)")
+
+
+def test_notices_survive_a_restart_without_repeating(rig: Rig) -> None:
+    watcher, t3, tracker = noticed(rig)
+    tracker.labels[5] = {"needs-answer"}
+    qa = next(t for t in t3.threads if t["title"] == QA)
+    t3.threads.remove(qa)  # The notify seat is down, so the notice waits.
+    watcher.poll_tracker()
+    assert notices(t3) == []
+    t3.threads.insert(0, qa)
+    again = Watcher(watcher.rig, t3, watcher.path, lambda line: None, tracker)
+    again.poll_tracker()
+    again.poll_tracker()
+    third = Watcher(watcher.rig, t3, watcher.path, lambda line: None, tracker)
+    third.poll_tracker()
+    assert notices(t3) == ["- #5 needs you: questions https://t/issues/5"]
+
+
+def test_a_failing_notice_is_retried_but_never_noticed_itself(rig: Rig) -> None:
+    lines: list[str] = []
+    watcher, t3, tracker = noticed(rig)
+    watcher.delivery.out = lines.append
+    tracker.labels[5] = {"needs-answer"}
+    qa = next(t for t in t3.threads if t["title"] == QA)
+    t3.threads.remove(qa)
+    for _ in range(5):
+        watcher.poll_tracker()
+    assert any(line.startswith("ALERT: can't ping dev.qa about notice (try 3)") for line in lines)
+    assert watcher.state["notices"]["pending"] == [
+        {"key": None, "text": "#5 needs you: questions https://t/issues/5"}
+    ]
+    t3.threads.insert(0, qa)
+    watcher.poll_tracker()
+    assert notices(t3) == ["- #5 needs you: questions https://t/issues/5"]
+
+
+def test_no_notify_seat_means_no_notices(rig: Rig) -> None:
+    watcher, t3, tracker = noticed(rig, notify_seat=None)
+    tracker.labels[5] = {"needs-answer"}
+    watcher.poll_tracker()
+    del tracker.labels[5]
+    watcher.poll_tracker()
+    assert notices(t3) == [] and "notices" not in watcher.state

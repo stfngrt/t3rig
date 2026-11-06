@@ -32,7 +32,9 @@ The issue tracker is the interface between `dev.pm` and `dev.lead`, so there is 
 between them. That also means {term}`watch` pings nobody about `dev.pm`'s runs, and its stuck or
 approval alerts print only on the `watch` console. With the tracker set in
 `rigs/self/rig.t3rig.yaml`, `watch` pings `dev.lead` when an issue gets `rig-queue`, and the seat
-that asked when `needs-answer` is removed (see {doc}`design/planning`).
+that asked when `needs-answer` is removed (see {doc}`design/planning`). `dev.pm` is the
+notify seat, so it gets a {term}`notice` for new questions, `ALERT`s and closed issues (see
+{doc}`watch`).
 
 The seats use skills from [Matt Pocock's set](https://github.com/mattpocock/skills) (MIT), vendored
 under `rigs/self/agents/*/skills/` with a `CHANGES.md` listing each change. `docs/agents/` holds the

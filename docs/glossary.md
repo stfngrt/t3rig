@@ -150,6 +150,11 @@ Envelope
   The `From:`/`To:` header on a message, taken from OpenRig. It is a label the sender writes about
   itself, not proof of who sent it.
 
+Notice
+  A message from `watch` to the rig's `notify_seat` when the rig needs a person: a new question for
+  the operator, an `ALERT`, or a closed issue. Each is sent once. Unlike a {term}`ping`, it goes to
+  the seat that talks to the operator, not to a dispatcher.
+
 Ping
   A short message from `watch` to a {term}`dispatcher`: one line per seat, with an excerpt of at
   most 120 characters and a link to the thread.

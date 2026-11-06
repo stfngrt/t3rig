@@ -24,11 +24,14 @@ tracker:
   repo: stfngrt/t3rig
   queue_seat: dev.lead
 review_rounds: 2      # an issue can override this with a "Review rounds: N" line
+notify_seat: dev.pm   # optional: the seat that gets notices
 ```
 
 - `tracker` is the issue tracker {doc}`watch` polls: `kind` picks `gh` or `glab`, `repo` is the
   repository or project, and `queue_seat` is the seat pinged when an issue is queued. It must be one
   of the rig's seats.
+- `notify_seat`, optional, is the seat that gets {term}`notices <notice>` when the rig needs
+  attention (see {doc}`watch`). It must be one of the rig's seats. Without it, there are no notices.
 - `review_rounds`, a positive integer and 2 by default, is how many review rounds a change gets.
   t3rig only checks it; the seats' instructions use it.
 

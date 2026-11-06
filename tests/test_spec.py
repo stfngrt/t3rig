@@ -666,6 +666,15 @@ def test_refuses_bad_t3rig_settings(tmp_path: Path) -> None:
     assert "tracker.queue_seat: no seat 'dev.nobody' in the rig" in errors
 
 
+def test_notify_seat_must_be_a_seat(tmp_path: Path) -> None:
+    path = write_rig(tmp_path, pods(MEMBER % ("a", "claude-code")))
+    assert load_rig(path).notify_seat is None  # Off unless set.
+    (tmp_path / "rig.t3rig.yaml").write_text("notify_seat: dev.a\n")
+    assert load_rig(path).notify_seat == "dev.a"
+    (tmp_path / "rig.t3rig.yaml").write_text("notify_seat: dev.pm\n")
+    assert "rig.t3rig.yaml.notify_seat: no seat 'dev.pm' in the rig" in errors_for(path)
+
+
 def test_review_rounds_refuses_booleans(tmp_path: Path) -> None:
     path = write_rig(tmp_path, pods(MEMBER % ("a", "claude-code")))
     (tmp_path / "rig.t3rig.yaml").write_text("review_rounds: true\n")

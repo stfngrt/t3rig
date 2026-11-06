@@ -41,6 +41,8 @@ LONG_REPLY = (
 class DemoTracker:
     """A tracker with fixed issues and no comments."""
 
+    limit = 1000
+
     def open_issues(self) -> list[Issue]:
         return [Issue(n, f"{REPO}/{n}", frozenset(labels), title) for n, title, labels in ISSUES]
 

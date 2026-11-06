@@ -107,7 +107,8 @@ class Delivery:
             self.failures[key] = count
             text = f"can't ping {seat} about {summary} (try {count}): {error}"
             if count >= ALERT_AFTER_FAILURES:
-                notice_key = f"ping:{seat}:{closing}:{summary}" if notice_on_alert else None
+                noticed = notice_on_alert and seat != self.rig.notify_seat
+                notice_key = f"ping:{seat}:{closing}:{summary}" if noticed else None
                 self.alert(text, notice_key)
             else:
                 self.out(text)

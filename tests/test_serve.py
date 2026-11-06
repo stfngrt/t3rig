@@ -1,4 +1,5 @@
 import asyncio
+import dataclasses
 import time
 from pathlib import Path
 
@@ -333,3 +334,26 @@ def test_demo_shows_every_state_without_real_t3(
     assert "Questions for you" in page and "#7" in page and "#13" in page
     assert "Lead is working on #9" in page
     assert state_path(server.rig).is_relative_to(tmp_path)
+
+
+def test_a_failing_round_is_noticed_once(rig: Rig) -> None:
+    rig = dataclasses.replace(rig, notify_seat="dev.qa")
+    server, t3, _ = make_server(rig, interval=0.01)
+    assert server.watcher is not None
+    step = server.watcher.step
+    calls = []
+
+    def flaky() -> None:
+        calls.append(1)
+        if len(calls) <= 2:
+            raise ValueError("boom")  # The same failure twice: one notice.
+        step()
+
+    server.watcher.step = flaky  # type: ignore[method-assign]
+    with http_client(server):
+        deadline = time.monotonic() + 5
+        while len(calls) < 5 and time.monotonic() < deadline:
+            time.sleep(0.01)
+    to_qa = [m for to, m, _ in t3.sent if to == f"id-{QA}"]
+    assert len(to_qa) == 1
+    assert "- ALERT: watch round failed, will retry: ValueError('boom')" in to_qa[0]

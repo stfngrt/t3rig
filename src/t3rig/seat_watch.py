@@ -122,7 +122,8 @@ def _check_seat(
                     dispatcher,
                     line,
                     {"asked": key},
-                    needs_person=dispatcher is None,
+                    # Only a person can answer it, so it's an ALERT even with a dispatcher.
+                    needs_person=True,
                 )
             )
         return events, updates
@@ -159,7 +160,7 @@ def _check_seat(
                     dispatcher,
                     line,
                     {"run": run},
-                    needs_person=bool(limited),
+                    needs_person=bool(limited) or thread.get("status") == "failed",
                 )
             )
     return events, updates
@@ -198,9 +199,12 @@ class SeatWatch:
             for event in events:
                 # A dispatcher can't fix these, so a person has to hear about them too.
                 if event.needs_person:
-                    # Keyed by the run or request it's about, so it becomes one notice.
+                    # Keyed by the run or request it's about, so it becomes one notice. An alert
+                    # about the notify seat isn't noticed: each notice would start a new run.
                     what = ":".join(str(v) for v in event.updates.values())
                     key = f"seat:{event.session_name}:{what}"
+                    if event.seat == self.rig.notify_seat:
+                        key = None
                     self.delivery.alert(event.line.removeprefix("- "), key)
                 if event.dispatcher is None:
                     self._apply(event.session_name, event.updates)

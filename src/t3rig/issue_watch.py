@@ -90,7 +90,15 @@ class IssueWatch:
         first_poll = "issues" not in self.state
         known = self.state.setdefault("issues", {})
         open_keys = {str(issue.number) for issue in issues}
-        for key in [key for key in known if key not in open_keys]:
+        gone = [key for key in known if key not in open_keys]
+        if gone and len(issues) >= self.tracker.limit:
+            # The list may have been cut off, so a missing issue needn't be closed. Keep it.
+            self.delivery.out(
+                f"the tracker's list stopped at its limit of {self.tracker.limit} open issues, "
+                "so issues missing from it aren't taken as closed"
+            )
+            gone = []
+        for key in gone:
             # Closed, by the rig or the operator: they share one account, so every close counts.
             gone = known.pop(key)  # A reopened issue starts afresh.
             title = f": {gone['title']} {gone['url']}" if gone.get("url") else ""

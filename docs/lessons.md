@@ -96,3 +96,11 @@ none recorded (it predates the rule)
 - IPv6 `--host` passed its own tests but got 400 on every request, because the tests built the
   allowed list and the middleware compared the bracketed form. Test an address through the real
   request path for each address family.
+
+## 2026-11-06: [#18](https://github.com/stfngrt/t3rig/issues/18) Traceable sessions and watch health
+
+- `watch`'s lock and state are keyed by the rig file's path, so in a worktree `ps` on the relative
+  rig path said `watch` was down while it ran. Seats use the main checkout's rig path from their
+  brief.
+- T3 lists no archived threads, so `log --all` wasn't built; `--thread <id>` covers a known id.
+- SSH pushes to GitHub kept hanging; pushing over HTTPS with `gh`'s credential helper worked.

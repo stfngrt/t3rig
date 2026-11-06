@@ -8,7 +8,9 @@ yourself, except for commit messages, pull request bodies and issue comments.
 after handing off work. Don't poll, sleep, or use `--wait`. Read a seat's full reply with the
 `t3 thread show` command in the ping. After handing off, check that the last line of `t3rig ps` says
 `watch: running`. If it doesn't, no ping will come: tell the operator that `watch` is down (in your
-reply, or on the issue with `needs-answer`) instead of ending your turn to wait.
+reply, or on the issue with `needs-answer`) instead of ending your turn to wait. Run `ps` with the
+same command and rig path as the `send` command in your brief: `watch`'s lock is keyed by that
+path, so `ps` on a worktree's `rigs/self/rig.yaml` always says it isn't running.
 
 Each issue is worked in its own worktree, `.worktrees/<N>` on the branch `issue-<N>`, and reviewed
 as a pull request; the main checkout stays on `main` and untouched (see the ticket queue). Loop:
@@ -17,7 +19,7 @@ as a pull request; the main checkout stays on `main` and untouched (see the tick
 2. Run the project's checks yourself in the worktree, commit, push the branch, and open the pull
    request (see `pr` below). dev.impl doesn't commit. End each commit message with the
    `Rig-Session` trailers from the culture: yours, and dev.impl's when it wrote the change (both
-   links are in `t3rig ps --json`).
+   links are in `t3rig ps --json`, run as above).
 3. Ask dev.review to review the pull request. It posts its findings on the pull request and replies
    to you.
 4. Send any real problems back to dev.impl. Commit and push its fixes to the same branch, rewrite

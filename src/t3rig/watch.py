@@ -398,6 +398,22 @@ def check_watchable(rig: Rig) -> None:
         raise RigError(f"rig {rig.name} has no delegates_to edges, so there's nobody to ping")
 
 
+def watch_running(rig: Rig) -> bool:
+    """Whether a `watch` or `serve` holds the rig's lock. Creates no file or folder."""
+    try:
+        lock = open(state_path(rig).with_suffix(".lock"), "rb")
+    except FileNotFoundError:
+        return False
+    with lock:
+        try:
+            # shortcut: a watch starting in this instant would be refused; it can be started again.
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return True
+        fcntl.flock(lock, fcntl.LOCK_UN)
+        return False
+
+
 @contextmanager
 def single_watcher(path: Path) -> Iterator[None]:
     path.parent.mkdir(parents=True, exist_ok=True)

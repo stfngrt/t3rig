@@ -13,7 +13,8 @@ named below.
 ## Conventions
 
 - **Create an issue**: `gh issue create --title "..." --body "..."`. Use a heredoc for multi-line
-  bodies.
+  bodies. Then add it to the project board:
+  `gh project item-add 2 --owner stfngrt --url <issue URL>`.
 - **Read an issue**: `gh issue view <number> --json number,title,body,labels,comments`.
 - **List issues**: `gh issue list --state open --label <label> --json number,title,labels`.
 - **Sub-issue of a parent**: `gh api --method POST repos/stfngrt/t3rig/issues/<parent>/sub_issues -F
@@ -27,7 +28,8 @@ named below.
   .issue_dependencies_summary.blocked_by` (open blockers only; 0 means startable).
 - **Comment**: `gh issue comment <number> --body "..."`.
 - **Labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`.
-- **Close**: post the explanation with `gh issue comment`, then `gh issue close <number>`.
+- **Close**: post the explanation with `gh issue comment`, then `gh issue close <number>`. Who
+  closes what is in `docs/agents/triage-labels.md`.
 
 File issues only into `stfngrt/t3rig`. Before the first `gh issue create` of a session, check the
 target with `gh repo view --json nameWithOwner`.
@@ -35,9 +37,26 @@ target with `gh repo view --json nameWithOwner`.
 ## Labels
 
 The labels are in `docs/agents/triage-labels.md`. In short, four labels are the whole state set:
-`dev.pm` writes tickets and labels them `needs-approval`, the operator, or `dev.pm` on their word, adds
-`rig-queue` (the only approval), `dev.lead` adds `in-progress` when it takes a `rig-queue` issue, in number order, and
-`needs-answer` marks questions for the operator. There is no `blocked` label.
+`dev.pm` writes tickets and labels them `needs-approval`, the operator, or `dev.pm` on their word,
+adds `rig-queue` (the only approval), `dev.lead` adds `in-progress` when it takes a `rig-queue`
+issue, in board order (below), and `needs-answer` marks questions for the operator. There is no
+`blocked` label.
+
+## The project board
+
+Every issue is on https://github.com/users/stfngrt/projects/2. The board groups by label, and there
+is no Status field to keep in sync. `dev.pm` adds each new issue with
+`gh project item-add 2 --owner stfngrt --url <issue URL>`.
+
+The board's order is the queue order: `dev.lead` takes `rig-queue` issues as they appear there, not
+by number. This lists their numbers in that order (closed issues have lost `rig-queue`):
+
+```sh
+gh project item-list 2 --owner stfngrt --format json --limit 1000 --jq '.items[] | select(.labels // [] | index("rig-queue")) | .content.number'
+```
+
+`gh project item-list` returns items in the project's own item order, the same order the GraphQL API
+gives (`projectV2.items`).
 
 ## Pull requests
 

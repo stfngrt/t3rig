@@ -9,7 +9,9 @@ You speak for the operator, so take the shortcut through them when it's convenie
 
 - Make quick fixes yourself (wording in a role, the culture or a doc), committed straight to `main`.
   Don't touch the lead's worktrees, and don't start or stop threads.
-- Close an issue when it's done or the operator has decided it, with a short comment.
+- Record the operator's decisions and answers on the issue. Closing is `dev.lead`'s job (see
+  `docs/agents/triage-labels.md`), so when the operator denies or cancels work, record that on the
+  issue and the lead closes it; close it yourself only when the operator asks you to.
 - Add `rig-queue` when the operator approves a ticket in conversation with you.
 - Message `dev.lead` when work would otherwise wait, for example when `watch` isn't running.
 
@@ -36,6 +38,9 @@ How you work with the operator:
   high-level decision about the process, architecture or code. Smaller steps stay in the session
   context, commit messages and docs. `to-tickets` should produce few tickets, not one per step. A
   ticket that adds a ping or a label transition says what the receiving seat does with it.
+
+Add every new issue to the project board right after creating it:
+`gh project item-add 2 --owner stfngrt --url <issue URL>` (see `docs/agents/issue-tracker.md`).
 
 Label a finished ticket `needs-approval`. Only `rig-queue`, added by the operator or by you on their
 word, makes `dev.lead` see it. Keep your messages short.

@@ -1,13 +1,24 @@
+import json
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from t3rig.cli import _ps
 from t3rig.rig import RigError
 from t3rig.spec import Edge, Rig, Seat, TrackerSettings
 from t3rig.t3 import T3Error
 from t3rig.tracker import Issue, TrackerError
-from t3rig.watch import Watcher, dispatchers, excerpt, state_path, waiting_approval, watch
+from t3rig.watch import (
+    Watcher,
+    dispatchers,
+    excerpt,
+    single_watcher,
+    state_path,
+    waiting_approval,
+    watch,
+    watch_running,
+)
 
 
 class FakeT3:
@@ -549,3 +560,35 @@ def test_tracker_alone_is_enough_to_watch(rig: Rig, tmp_path: Path) -> None:
     settings = tracked(rig).tracker
     bare = Rig(name="b", path=tmp_path / "b.yaml", seats=rig.seats, edges=(), tracker=settings)
     watch(bare, FakeT3(), 1, once=True, make_tracker=lambda s: FakeTracker())
+
+
+def test_watch_running_follows_the_lock_and_creates_nothing(rig: Rig) -> None:
+    path = state_path(rig)
+    assert not watch_running(rig)
+    assert not path.parent.exists()
+    with single_watcher(path):
+        assert watch_running(rig)
+    assert not watch_running(rig)
+
+
+def test_ps_says_whether_watch_is_running(rig: Rig, capsys: pytest.CaptureFixture[str]) -> None:
+    t3 = FakeT3()
+    started(t3)
+    _ps(rig, t3, as_json=False)
+    assert capsys.readouterr().out.splitlines()[-1] == "watch: not running, has never run"
+    with single_watcher(state_path(rig)):
+        _ps(rig, t3, as_json=True)
+        status = json.loads(capsys.readouterr().out)
+        assert status["watch_running"] is True and status["watch_last_check"] is None
+        _ps(rig, t3, as_json=False)
+        assert capsys.readouterr().out.splitlines()[-1] == "watch: running, has never run"
+
+
+def test_signature_with_a_thread_link_still_names_the_seat(rig: Rig) -> None:
+    watcher, t3, tracker, _ = issue_watcher(rig)
+    tracker.labels[5] = {"needs-answer"}
+    tracker.notes[5] = ["🤖 dev.impl (t3rig) · https://app.t3.codes/threads/p/mcp%3Aabc\nQuestions"]
+    watcher.poll_tracker()
+    tracker.labels[5] = set()
+    watcher.poll_tracker()
+    assert t3.sent[0][0] == f"id-{IMPL}"

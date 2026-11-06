@@ -46,7 +46,11 @@ repeat a ping, but not lose one.
 
 ## Running it
 
-- It only works while running. It's a foreground command, not a daemon.
+- It only works while running. It's a foreground command, not a daemon. `t3rig ps` says whether a
+  `watch` or `serve` is running for the rig (it holds the rig's lock) and when it last checked, and
+  `ps --json` has both as `watch_running` and `watch_last_check`. Both are keyed by the rig file's
+  path, so run `ps` on the same `rig.yaml` path that `watch` was started with: another copy of the
+  rig, such as one in a git worktree, says `watch` isn't running.
 - It polls, every 15 seconds by default (`--interval`), so a ping can lag by that much. The
   tracker is polled every 60 seconds by default (`--tracker-interval`), a guess still to be
   measured against the tracker's rate limits.

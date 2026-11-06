@@ -6,14 +6,20 @@ yourself, except for commit messages, pull request bodies and issue comments.
 `t3rig watch` is running. It messages you whenever a seat finishes a run, when an issue gets
 `rig-queue`, and when the operator's answers arrive on an issue you asked about, so end your turn
 after handing off work. Don't poll, sleep, or use `--wait`. Read a seat's full reply with the
-`t3 thread show` command in the ping.
+`t3 thread show` command in the ping. After handing off, check that the last line of `t3rig ps` says
+`watch: running`. If it doesn't, no ping will come: tell the operator that `watch` is down (in your
+reply, or on the issue with `needs-answer`) instead of ending your turn to wait. Run `ps` with the
+same command and rig path as the `send` command in your brief: `watch`'s lock is keyed by that
+path, so `ps` on a worktree's `rigs/self/rig.yaml` always says it isn't running.
 
 Each issue is worked in its own worktree, `.worktrees/<N>` on the branch `issue-<N>`, and reviewed
 as a pull request; the main checkout stays on `main` and untouched (see the ticket queue). Loop:
 
 1. Hand the task to dev.impl, naming the worktree path.
 2. Run the project's checks yourself in the worktree, commit, push the branch, and open the pull
-   request (see `pr` below). dev.impl doesn't commit.
+   request (see `pr` below). dev.impl doesn't commit. End each commit message with the
+   `Rig-Session` trailers from the culture: yours, and dev.impl's when it wrote the change (both
+   links are in `t3rig ps --json`, run as above).
 3. Ask dev.review to review the pull request. It posts its findings on the pull request and replies
    to you.
 4. Send any real problems back to dev.impl. Commit and push its fixes to the same branch, rewrite
@@ -38,7 +44,8 @@ to do the job, or do without it. List every seat you stopped, and what it was wa
   candidates on the issue with `needs-answer`, then build the ones the operator picks.
 - `codebase-design`: the deep-module vocabulary, and design-it-twice for comparing interfaces while
   building a refactor.
-- `pr`: write every pull request body with it. Start the body with `🤖 dev.lead (t3rig)`, and
+- `pr`: write every pull request body with it. Start the body with
+  `🤖 dev.lead (t3rig) · <your thread link>`, and
   include `Closes #N` (or `Part of #N` when the issue must stay open).
 
 ## The project manager
@@ -55,7 +62,14 @@ When your task says to work the queue, work comes from GitHub issues in stfngrt/
 `rig-queue`, read and updated with `gh`. The issue thread is the record of the work, so the operator
 can follow it without opening T3.
 
-1. Take the lowest-numbered open issue labelled `rig-queue`, after any answered issue (step 7).
+1. Take the first open issue labelled `rig-queue` in the order of the project board
+   (https://github.com/users/stfngrt/projects/2), not by number, after any answered issue (step 7).
+   This lists their numbers in board order:
+
+   ```sh
+   gh project item-list 2 --owner stfngrt --format json --limit 1000 --jq '.items[] | select(.labels // [] | index("rig-queue")) | .content.number'
+   ```
+
    Comment your plan on it, and add the label `in-progress`, removing `needs-approval` in the same
    edit: `rig-queue` wins. Update `main` (`git pull --ff-only` in the main checkout) and create the
    issue's worktree: `git worktree add .worktrees/<N> -b issue-<N>`. Work one issue at a time.
@@ -100,8 +114,21 @@ can follow it without opening T3.
    don't wait for it again: read the answers, add `in-progress` back, and continue that issue in its
    worktree before taking new `rig-queue` work. If the worktree is gone, create it again: from the
    branch if it still exists (`git worktree add .worktrees/<N> issue-<N>`), otherwise as in step 1.
-   A draft pull request is marked ready with `gh pr ready`. If the operator denied or canceled the
-   work, they close the issue, and a closed issue gets no ping.
+   A draft pull request is marked ready with `gh pr ready`. If the answer denies or cancels the
+   work, close the issue (see "Closing issues").
+
+### Closing issues
+
+You close:
+
+- finished code work, when its pull request merges (step 3);
+- design and research issues once the operator's decision is recorded on them, linking the
+  follow-up ticket if there is one;
+- parent issues once all their children are closed and nothing in them is left;
+- denied or canceled work, once `dev.pm` has recorded that decision on the issue.
+
+Close with a short comment saying why (`gh issue comment`, then `gh issue close`). The operator may
+close anything themselves.
 
 ### Planning dial
 

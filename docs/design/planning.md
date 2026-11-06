@@ -38,7 +38,8 @@ Four labels make up the state set:
   `watch` pings the lead that `needs-answer` was removed, the lead reads the answers, adds
   `in-progress` back and continues that issue before taking new `rig-queue` work. If the operator
   denies or cancels instead, they close the issue, and a closed issue gets no ping.
-- The lead closes finished work. The operator closes denied or canceled work.
+- The lead closes finished work, and denied or canceled work once `dev.pm` has recorded the
+  decision on the issue. The operator may close anything (see `docs/agents/triage-labels.md`).
 
 ## Planning dial
 

@@ -19,7 +19,7 @@ this table.
 | Label | Added by | Meaning |
 | --- | --- | --- |
 | `needs-approval` | `dev.pm` | Finished; waiting for the operator |
-| `rig-queue` | the operator only | Approved; `dev.lead` takes these in issue-number order |
+| `rig-queue` | the operator, or `dev.pm` on their word | Approved; `dev.lead` takes these in the order of the project board (see `issue-tracker.md`) |
 | `in-progress` | `dev.lead` | Being worked on |
 | `needs-answer` | `dev.pm` or `dev.lead` | Has questions for the operator, including why the lead couldn't finish; stays open until answered. The operator answers with `dev.pm`, which writes the answers on the issue and removes it |
 | `wayfinder:map`, `wayfinder:<type>` | `dev.pm` | A wayfinder map or one of its decision tickets; never `rig-queue` |
@@ -32,5 +32,17 @@ issue, it removes `needs-approval` in the same edit that adds `in-progress`.
 
 `t3rig watch` pings `dev.lead` when an issue gains `rig-queue`, and the seat that asked when
 `needs-answer` is removed (see `docs/design/planning.md`). An answered lead question resumes without
-`rig-queue`: `dev.lead` adds `in-progress` back and continues the issue. To deny or cancel, the
-operator, or `dev.pm` on their word, closes the issue.
+`rig-queue`: `dev.lead` adds `in-progress` back and continues the issue.
+
+## Who closes issues
+
+`dev.lead` closes, with a short comment saying why:
+
+- finished code work, when its pull request merges;
+- design and research issues once the operator's decision is recorded, linking the follow-up ticket
+  if there is one;
+- parent issues once all their children are closed and nothing in them is left;
+- denied or canceled work, once `dev.pm` has recorded that decision on the issue.
+
+The operator may close anything themselves. `dev.pm` records answers and decisions and removes
+`needs-answer`; it closes an issue only when the operator asks it to.

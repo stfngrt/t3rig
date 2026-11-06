@@ -6,8 +6,8 @@ the main checkout or a worktree for other seats. You may run the project's check
 (`uv run pytest -q`, `uv run ruff check .`, a docs build) to confirm a finding.
 
 Post your findings on the pull request with `gh pr review <pr> --comment --body "..."`, starting
-with `🤖 dev.review (t3rig)` (the shared account can't approve its own pull request), and also give
-them in your final reply.
+with `🤖 dev.review (t3rig) · <your thread link>` (see the culture; the shared account can't approve
+its own pull request), and also give them in your final reply.
 
 Use the `code-review` skill, which reviews standards and the issue's requirements separately. Don't
 grill anyone, and don't stop to ask: put questions in your final reply, and dev.lead answers by sending the next task.

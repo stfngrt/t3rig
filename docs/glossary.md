@@ -212,7 +212,7 @@ Closure
   Finishing a queue item as `done` with a reason from `handed_off_to`, `denied`, `canceled`,
   `no-follow-on`, `escalation` or `superseded`
   (`as-built/architecture/coordination-primitive.md:268-294`). In t3rig, closing the issue: the lead
-  closes finished work, and the operator closes denied or canceled work.
+  closes finished work, and denied or canceled work once `dev.pm` has recorded the decision.
 
 Human verb
   What a person does to a queue item. OpenRig has nine: `approve`, `deny`, `route`, `annotate`,
@@ -225,14 +225,16 @@ Approve
   approval; the lead's plan comment is not a second gate.
 
 Deny
-  Rejects the work and closes it as `denied`. In t3rig, the operator closes the issue.
+  Rejects the work and closes it as `denied`. In t3rig, `dev.pm` records the decision on the issue
+  and the lead closes it.
 
 Hold
   Parks the item as `blocked` (`as-built/architecture/mission-control.md:97-107`). Not used by
   t3rig: work that can't go on gets {term}`needs-answer`.
 
 Drop
-  Withdraws the item and closes it as `canceled`. In t3rig, the operator closes the issue.
+  Withdraws the item and closes it as `canceled`. In t3rig, `dev.pm` records the decision on the
+  issue and the lead closes it.
 
 Resolve
   Takes an item parked on a human seat or a typed gate back to work, with decision evidence.
@@ -307,8 +309,9 @@ Ticket
   _Avoid_: work item
 
 rig-queue
-  The label the operator alone adds to approve a ticket, and the only approval; `dev.lead` takes
-  labelled issues in number order. `watch` pings the tracker's `queue_seat` when an issue gains it.
+  The label the operator, or `dev.pm` on their word, adds to approve a ticket, and the only
+  approval; `dev.lead` takes labelled issues in the order of the project board. `watch` pings the
+  tracker's `queue_seat` when an issue gains it.
 
 needs-approval
   The label `dev.pm` puts on a finished ticket. `rig-queue` wins when both are set.

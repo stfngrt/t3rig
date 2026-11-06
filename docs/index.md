@@ -87,6 +87,7 @@ watch
 serve
 skills
 limits
+openrig
 ```
 
 ```{toctree}

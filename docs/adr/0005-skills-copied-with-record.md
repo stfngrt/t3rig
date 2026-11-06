@@ -3,8 +3,8 @@
 **Status:** accepted
 
 `t3rig up` plans the copy of each {term}`skill` into the seat's `cwd` (`.claude/skills` or
-`.agents/skills`) and writes nothing without `--yes`. The README says t3rig "only creates files and
-replaces ones it wrote itself, and it never deletes", records what it wrote with hashes in
+`.agents/skills`) and writes nothing without `--yes`. {doc}`/skills` says t3rig "only creates files
+and replaces ones it wrote itself, and it never deletes", records what it wrote with hashes in
 `~/.local/state/t3rig/` (outside the project), and refuses a target that exists and wasn't written
 by t3rig, or was edited since (`615569b`).
 

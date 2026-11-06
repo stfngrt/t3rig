@@ -76,3 +76,8 @@ none recorded (it predates the rule)
   loops and network listeners for both.
 - `serve` couldn't be tried on the real rig while `t3rig watch` held its lock, and nobody opened the
   page in a browser. A UI change needs a person to look at it before it's called done.
+
+## 2026-11-06: [#2](https://github.com/stfngrt/t3rig/issues/2) Short README
+
+- Cutting the README broke 15 citations to its sections in ADRs and design docs. Cite docs pages,
+  not README sections, since the README is now only an intro.

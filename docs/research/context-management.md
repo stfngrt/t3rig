@@ -40,7 +40,7 @@ lead's checks.
 ## 1. Per seat
 
 **At start, a t3rig seat gets one message** holding every layer (agent, culture, rig, pod, member),
-whatever the `delivery_hint`, except installed skills (README "What's supported"; `seat_brief` in
+whatever the `delivery_hint`, except installed skills ({doc}`/rig-specs`; `seat_brief` in
 `src/t3rig/rig.py`, *repo*). It fetches everything else on demand: code, issues, other seats'
 threads. OpenRig prefers the opposite split: put as much as possible in context loading, with
 managed `CLAUDE.md`/`AGENTS.md` blocks and installed skills before boot, and use `send_text` only
@@ -71,14 +71,14 @@ item, not the CLI [^oai-compact]. How T3 compacts, or whether it does anything i
    growth (~300k tokens), not turns or time (`:51-55`). t3rig refuses hooks and has no signal for
    either tool, so the nearest equivalent is an explicit re-send.
 2. Skills are the one durable channel t3rig already has. They are shared by every seat in a `cwd`
-   (README "Skills"), so they can't carry per-seat roles in a shared checkout like `rigs/self`.
+   ({doc}`/skills`), so they can't carry per-seat roles in a shared checkout like `rigs/self`.
 3. A managed `CLAUDE.md` block would be shared by every seat in that folder, so it fits culture and
    rig-level rules, not roles. Only a `CLAUDE.md` in the launch directory or its parents loads at
-   launch and survives compaction [^cc-ctx]. T3 threads start in the T3 project's root (README
-   "Limits"), so a block in the project root would load for every seat, including those whose `cwd`
-   is a subfolder; a block in a subfolder would not. OpenRig's rules to copy: never overwrite a
-   hand-edited block, and flag it as possibly stale (`agent-startup-guide.md:374-377`).
-   *Unverified:* what launch directory T3 gives each provider session; the README already says
+   launch and survives compaction [^cc-ctx]. T3 threads start in the T3 project's root
+   ({doc}`/limits`), so a block in the project root would load for every seat, including those whose
+   `cwd` is a subfolder; a block in a subfolder would not. OpenRig's rules to copy: never overwrite
+   a hand-edited block, and flag it as possibly stale (`agent-startup-guide.md:374-377`).
+   *Unverified:* what launch directory T3 gives each provider session; {doc}`/skills` already says
    skills in a non-root `cwd` might not be picked up.
 4. Keep orientation small. Claude Code advises under 200 lines per `CLAUDE.md` and warns that
    contradicting instructions make Claude "pick one arbitrarily" [^cc-mem]. t3rig's `rigs/self`
@@ -220,9 +220,9 @@ is "off by default; not yet shown to work natively"), and a compaction manager.
 ## Open questions
 
 1. Does T3 compact threads itself, and can t3rig detect it? *Unknown.*
-2. What launch directory does T3 give a provider session? t3rig's README says the project root.
-   A `CLAUDE.md` below the launch directory is documented to load on demand [^cc-ctx]; whether
-   skills below it are picked up is *unverified* (also in the README).
+2. What launch directory does T3 give a provider session? t3rig's {doc}`/limits` page says the
+   project root. A `CLAUDE.md` below the launch directory is documented to load on demand [^cc-ctx];
+   whether skills below it are picked up is *unverified* (also in {doc}`/skills`).
 3. How does Codex CLI compact, and does it re-read `AGENTS.md` afterwards? *Unverified.*
 4. Is a re-sent orientation weighted like the first one? *Unverified*, and for the same reason
    OpenRig keeps its refocus short.

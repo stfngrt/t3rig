@@ -7,7 +7,7 @@ operator to approve or change. Claims cite a source, or are marked *repo* (t3rig
 ## Problem
 
 An {term}`agent spec` selects {term}`skills <skill>` for a {term}`seat`, but `t3rig up` copies them into the seat's `cwd`
-(`.claude/skills/<id>/` or `.agents/skills/<id>/`, `src/t3rig/skills.py`, README "Skills", *repo*).
+(`.claude/skills/<id>/` or `.agents/skills/<id>/`, `src/t3rig/skills.py`, {doc}`/skills`, *repo*).
 Every seat in that folder gets every skill, and so does any other Claude or Codex session the
 operator opens there. In `rigs/self` the `ponytail` skill is for `dev.impl`, but all three seats
 and the operator's own session share the project root and see it, and its description sits in each
@@ -177,7 +177,7 @@ that writes the code. Moving it changes three things:
   `existing_worktree` and its path (*lead*), not let T3 create one.
 
 Where the worktree lives matters. A T3-created worktree is likely outside the project
-(*unverified*), and README "Limits" requires a seat's `cwd` to be inside a T3 project. A
+(*unverified*), and {doc}`/limits` requires a seat's `cwd` to be inside a T3 project. A
 **gitignored worktree inside the project root**, such as `.t3rig/worktrees/<seat>`, fits that rule.
 Whether T3 accepts a thread whose `cwd` is such a nested checkout is *unverified*.
 
@@ -207,7 +207,7 @@ Each phase is its own issue, in this order.
    - **Cleanup:** `up` lists those its record shows it wrote and that are unchanged, with a `rm -r`
      command per folder that it prints but doesn't run, and a manual step for any it can't vouch for.
    - **Docs, examples and the rig:** update `rigs/self/agents/impl/role.md:10`, which points at
-     `.claude/skills/ponytail/SKILL.md`; the README "Skills" section, which describes the old paths;
+     `.claude/skills/ponytail/SKILL.md`; the {doc}`/skills` page, which describes the old paths;
      and `examples/skills/` with its `.gitignore` entries, for the new paths.
 4. **Per-seat worktrees (E), opt-in.** Size L. t3rig creates a worktree per carrying seat,
    preferably gitignored inside the project root, installs skills in it, and launches with
@@ -221,7 +221,7 @@ Each phase is its own issue, in this order.
 ## Not verified
 
 - Whether T3 gives provider sessions the project root as their launch directory and honours a
-  worktree path, inside or outside the project (README says the project root).
+  worktree path, inside or outside the project ({doc}`/limits` says the project root).
 - Whether `auto` mode prompts for reads outside the repo, and whether `additionalDirectories`
   grants them without a prompt.
 - Whether a `/name` or `$name` at the start of a first message runs the skill through T3.

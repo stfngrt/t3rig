@@ -10,5 +10,5 @@ and {term}`access level` come from. Why the sign-in is capped by an access level
 days: not recorded. A seat whose settings don't match is archived.
 
 The mapping is an approximation: OpenRig's policies are finer-grained than T3's four modes, so
-custom policy files are refused (README). Modes make a seat ask before acting; they are not a
-security boundary. Alternatives: not recorded.
+custom policy files are refused ({doc}`/permissions`). Modes make a seat ask before acting; they are
+not a security boundary. Alternatives: not recorded.

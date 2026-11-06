@@ -5,15 +5,22 @@ t3rig runs [OpenRig](https://github.com/mvschwarz/openrig)-compatible `rig.yaml`
 
 It requires [uv](https://docs.astral.sh/uv/) and a running T3 Code with the `t3` CLI.
 
+```sh
+git clone https://github.com/stfngrt/t3rig
+cd t3rig
+uv run t3rig --version
+```
+
 ## Basic commands
 
 ```sh
 uv run t3rig validate examples/two-seat/rig.yaml   # check the spec; starts nothing
 uv run t3rig up examples/two-seat/rig.yaml         # start a thread per seat; safe to re-run
+uv run t3rig up examples/skills/rig.yaml --yes     # also install the rig's skills; see Skills
 uv run t3rig ps examples/two-seat/rig.yaml         # status, model, mode and links; --json too
 uv run t3rig send examples/two-seat/rig.yaml dev.impl "Hello"        # add --wait for the reply
 uv run t3rig send examples/two-seat/rig.yaml --pod dev "Hello"       # or --all for every seat
-uv run t3rig log examples/two-seat/rig.yaml dev.impl                 # latest messages
+uv run t3rig log examples/two-seat/rig.yaml dev.impl                 # latest messages; --messages N (default 10, at least 1)
 ```
 
 `validate` checks that t3rig can run the spec. `up` starts a thread for each seat that doesn't have one.

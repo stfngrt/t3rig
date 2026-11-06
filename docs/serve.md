@@ -4,7 +4,7 @@
 live, read-only status page in the browser.
 
 ```sh
-pip install 't3rig[serve]'   # or: uv sync, which includes it for development
+uv sync --extra serve       # in the t3rig checkout; plain `uv sync` includes it for development
 t3rig serve rigs/self/rig.yaml
 ```
 

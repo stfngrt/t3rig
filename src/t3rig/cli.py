@@ -97,7 +97,7 @@ def build_parser() -> argparse.ArgumentParser:
     serve_parser = commands.add_parser(
         "serve",
         help="Run watch as a server, with a live read-only status page on 127.0.0.1. "
-        "Needs the serve extra: pip install 't3rig[serve]'.",
+        "Needs the serve extra: uv sync --extra serve.",
     )
     serve_parser.add_argument("rig", help="path to rig.yaml")
     serve_parser.add_argument(
@@ -248,7 +248,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             except ModuleNotFoundError as error:
                 raise RigError(
                     f"serve needs the serve extra ({error.name} is missing): "
-                    "pip install 't3rig[serve]'"
+                    "run `uv sync --extra serve` in the t3rig checkout"
                 ) from error
             serve(rig, t3, args.port, args.interval, args.tracker_interval)
         elif args.command == "watch":

@@ -5,13 +5,13 @@ Claims cite their source, or are marked *repo* (t3rig's own code or history) or 
 
 ## Summary
 
-- A seat's context is its only memory. Everything t3rig gives a seat today is in one first message (its {term}`brief`),
-  and Claude Code's own docs say "detailed instructions from early in the conversation may be
-  lost" when it compacts [^cc-works]. OpenRig reaches the same conclusion: "Editing a file is not
-  delivery" (`docs/reference/refocus-channel.md:3-5`).
+- A seat's context is its only memory. Everything t3rig gives a seat today is in one message, its
+  {term}`brief`, and Claude Code's own docs say "detailed instructions from early in the
+  conversation may be lost" when it compacts [^cc-works]. OpenRig reaches the same conclusion:
+  "Editing a file is not delivery" (`docs/reference/refocus-channel.md:3-5`).
 - What survives compaction depends on how it was loaded: root `CLAUDE.md` and unscoped rules are
-  re-injected from disk, invoked skills are re-injected with a cap, a first message is only
-  summarized [^cc-ctx].
+  re-injected from disk, invoked skills are re-injected with a cap, a brief is only summarized
+  [^cc-ctx].
 - The cheapest wins are small: a way to re-send orientation, a bounded result-by-pointer convention
   for hand-offs, and a stale-orientation check. Hooks, a context library and work packets are not
   worth building now.
@@ -50,7 +50,7 @@ for grounding (`reference/agent-startup-guide.md:70-91,214-228`).
 
 | Loaded as | After compaction |
 |---|---|
-| First message (t3rig today) | Summarized with the conversation; detail "may be lost" [^cc-works] |
+| Brief (t3rig today) | Summarized with the conversation; detail "may be lost" [^cc-works] |
 | `CLAUDE.md` in the launch directory and its parents, unscoped rules, auto memory | Re-injected from disk |
 | `CLAUDE.md` in a subdirectory, `paths:` rules | Loaded when a file there is read or edited; summarized away at compaction, then reloaded on demand |
 | Skill descriptions | Rebuilt and re-injected (v2.1.304 or later) |
@@ -118,7 +118,7 @@ lead's report from its run the night this was written):
   `t3 thread show --messages N` and gets whatever the seat wrote. `t3 thread show` has no
   documented size cap per message (only `--messages N` and `--json`); the T3 MCP read has `limit`
   (1-100) and `maxCharsPerItem` (1-50000), which t3rig's own `log` does not expose.
-- Briefs are sent once at `up`, and commands in a seat's first message went stale after a rename.
+- Briefs are sent once at `up`, and commands in a seat's brief went stale after a rename.
   OpenRig's answer is to derive what can be derived: prose "drifts", derived-from-source "can't
   rot" (`reference/knowledge-maturity.md:65-69`).
 - Review needs the excerpts re-pasted each round, because seats can't read files outside the repo.
@@ -173,7 +173,7 @@ changed since. That tells you a running seat is out of date, which is the proble
 
 | Approach | Cost to the seat's context | Notes |
 |---|---|---|
-| One big first message | One-off, but it is summarized after compaction | Today |
+| One big brief | One-off, but it is summarized after compaction | Today |
 | Skill descriptions | Per turn, for every installed skill; capped at 1,536 characters each [^cc-skills] | Bodies load only when invoked |
 | Invoked skill body | Recurring while in context, "every line is a recurring token cost" [^cc-skills] | Re-injected up to 5,000 tokens |
 | Managed `CLAUDE.md` block | Every session start, also after compaction | Keep under about 200 lines [^cc-mem] |

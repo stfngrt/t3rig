@@ -168,7 +168,7 @@ Down
 Stuck seat
   A seat that can't continue without a person: it is waiting on an {term}`approval` or a question,
   or has stopped at a usage limit. `watch` pings its dispatcher, and prints an `ALERT` when it has
-  none, or when the seat stopped at a usage limit (`src/t3rig/watch.py:214,281`).
+  none, or when the seat stopped at a usage limit (`needs_person` in `src/t3rig/watch.py`).
 
 Approval
   A request from a seat to run something, held by T3 until a person answers in T3. A dispatcher

@@ -41,6 +41,6 @@ written to the repo, so a long-running seat can lose them when its conversation 
 ## Edges
 
 `delegates_to` {term}`edges <edge>` decide who {doc}`watch` pings, and `delegates_to` cycles are refused. Otherwise
-edges are only described in each seat's first message, so nothing enforces them.
+edges are only described in each seat's {term}`brief`, so nothing enforces them.
 
 See `examples/` in the repository for working specs.

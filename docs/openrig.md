@@ -21,7 +21,7 @@ audit, and it was last reviewed on 2026-11-06 in
 | Workflows | A workflow runtime with packets and lifecycle graphs | The issue flow, described in the roles | Out of scope |
 | SDLC tooling | Missions, slices, `rig proof` with judges, planning dial | The planning dial as guidance, pull request review, lessons, vendored skills | Done differently. Proof judges: later |
 | Lifecycle | Snapshot, restore, fork, grow, shrink, adopt, reconcile | `up`, `stop`, `down` | Closing: `handover` ([#5](https://github.com/stfngrt/t3rig/issues/5)). Snapshot and fork: out of scope, because T3 owns threads |
-| Observability | TUI, web UI, views, transcripts, telemetry, doctor | `ps`, `log`, and the {doc}`serve` page | Closing: traceable sessions and `watch` health ([#18](https://github.com/stfngrt/t3rig/issues/18)), redesign ([#19](https://github.com/stfngrt/t3rig/issues/19)). Cost per seat: later |
+| Observability | TUI, web UI, views, transcripts, telemetry, doctor | `ps` (with `watch` health), `log` (also on an earlier thread by id), the {doc}`serve` page, and thread links on every post and commit | Done: traceable sessions and `watch` health ([#18](https://github.com/stfngrt/t3rig/issues/18)). Closing: redesign ([#19](https://github.com/stfngrt/t3rig/issues/19)). Cost per seat: later |
 | Distribution | Bundles, a specs registry, an installer | Run from a checkout with `uv` | Closing: `t3rig init` ([#23](https://github.com/stfngrt/t3rig/issues/23)) |
 | Multi-host | Cross-host routing and remote actions | One T3 environment | Later: T3 can already link environments |
 | Workspaces | A workspace and project catalog | A seat's `cwd` must be inside a T3 project; a worktree per issue | Later |

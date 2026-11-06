@@ -206,6 +206,11 @@ def test_host_flag_adds_its_address_to_the_host_check(rig: Rig) -> None:
     assert http.get("/api/seats", headers={"Host": "evil.example"}).status_code == 400
     default = http_client(server)
     assert default.get("/api/seats", headers={"Host": "192.168.5.10"}).status_code == 400
+    for address in ("fe80::1", "::1"):
+        v6 = TestClient(create_app(server, address), base_url=f"http://[{address}]:8765")
+        assert v6.get("/api/seats").status_code == 200
+        assert v6.get("/api/seats", headers={"Host": f"[{address}]:8765"}).status_code == 200
+        assert v6.get("/api/seats", headers={"Host": "evil.example"}).status_code == 400
 
 
 @pytest.mark.parametrize("host", ["0.0.0.0", "::", ""])

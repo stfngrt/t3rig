@@ -227,7 +227,10 @@ def create_app(server: RigServer, host: str = HOST) -> FastAPI:
 
     app = FastAPI(title=f"t3rig: {server.rig.name}", lifespan=lifespan)
     # Refuses DNS rebinding: another site's page resolving its name to 127.0.0.1. Ports are ignored.
-    allowed = ALLOWED_HOSTS + ([host.lower()] if host.lower() not in ALLOWED_HOSTS else [])
+    name = host.lower()
+    # Starlette keeps the brackets of an IPv6 Host header, such as "[::1]:8765".
+    extra = [f"[{name}]"] if ":" in name else [name]
+    allowed = ALLOWED_HOSTS + [h for h in extra if h not in ALLOWED_HOSTS]
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed)
     static = Path(__file__).parent / "static"
     app.mount("/static", StaticFiles(directory=static), name="static")

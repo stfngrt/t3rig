@@ -21,9 +21,10 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, PackageLoader
 
-from t3rig.rig import RigError, ago, connect_mcp, seat_rows
+from t3rig.rig import RigError, ago, seat_rows
 from t3rig.spec import Rig
-from t3rig.t3 import T3Cli, T3Error
+from t3rig.t3 import T3Error
+from t3rig.threads import T3
 from t3rig.tracker import Issue, Tracker, tracker_for
 from t3rig.watch import (
     ANSWER_LABEL,
@@ -44,7 +45,7 @@ APPROVAL_LABEL = "needs-approval"
 FRAGMENTS = ("seats", "issues", "events")
 
 
-def seats_with_activity(rig: Rig, t3: T3Cli) -> list[dict[str, Any]]:
+def seats_with_activity(rig: Rig, t3: T3) -> list[dict[str, Any]]:
     """`ps`'s rows, each with the seat's latest message, as `log --messages 1` shows it."""
     rows = seat_rows(rig, t3)
     for row in rows:
@@ -89,11 +90,10 @@ class RigServer:
     def __init__(
         self,
         rig: Rig,
-        t3: T3Cli,
+        t3: T3,
         interval: float = 15,
         tracker_interval: float = 60,
         make_tracker: Callable[..., Tracker] = tracker_for,
-        connect: Callable[..., Any] | None = connect_mcp,
         out: Callable[[str], None] = print,
     ) -> None:
         self.rig, self.t3, self.interval, self.print = rig, t3, interval, out
@@ -111,7 +111,7 @@ class RigServer:
             tracker = make_tracker(rig.tracker) if rig.tracker else None
             path = state_path(rig)
             self.watcher = Watcher(
-                rig, t3, path, self.log, connect, tracker, tracker_interval=tracker_interval
+                rig, t3, path, self.log, tracker, tracker_interval=tracker_interval
             )
 
     def log(self, text: str, kind: str = "watch") -> None:
@@ -274,7 +274,7 @@ class _Uvicorn(uvicorn.Server):
 
 
 def serve(
-    rig: Rig, t3: T3Cli, port: int, interval: float, tracker_interval: float, host: str = HOST
+    rig: Rig, t3: T3, port: int, interval: float, tracker_interval: float, host: str = HOST
 ) -> None:
     check_host(host)
     with single_watcher(state_path(rig)):  # Refuses if `t3rig watch` or another serve runs.

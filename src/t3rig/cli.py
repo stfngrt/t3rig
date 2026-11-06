@@ -12,6 +12,7 @@ from t3rig.rig import RigError, ago, down, log, seat_rows, select_seats, send, s
 from t3rig.skills import apply_skills, plan_skills
 from t3rig.spec import Rig, SpecError, load_rig
 from t3rig.t3 import T3Cli, T3Error
+from t3rig.threads import T3, T3Code
 from t3rig.watch import dispatchers, last_check, watch, watch_running
 
 
@@ -128,7 +129,7 @@ def _validate(rig: Rig) -> None:
     print(f"{rig.name}: OK ({len(rig.seats)} seats, {len(rig.edges)} edges)")
 
 
-def _up(rig: Rig, t3: T3Cli, yes: bool) -> int:
+def _up(rig: Rig, t3: T3, yes: bool) -> int:
     plan = plan_skills(rig)  # Before anything starts, so a refusal leaves nothing half done.
     for problem in plan.errors:
         print(f"error: {problem}", file=sys.stderr)
@@ -157,7 +158,7 @@ def _status_text(row: dict) -> str:
     return f"needs input ({pending})" if pending else row["status"]
 
 
-def _ps(rig: Rig, t3: T3Cli, as_json: bool) -> None:
+def _ps(rig: Rig, t3: T3, as_json: bool) -> None:
     rows = seat_rows(rig, t3)
     checked, running = last_check(rig), watch_running(rig)
     if as_json:
@@ -194,7 +195,7 @@ def _ps(rig: Rig, t3: T3Cli, as_json: bool) -> None:
         print(f"watch: {state}, " + (f"last check {ago(checked)}" if checked else "has never run"))
 
 
-def _send(rig: Rig, t3: T3Cli, args: argparse.Namespace) -> int:
+def _send(rig: Rig, t3: T3, args: argparse.Namespace) -> int:
     fan_out = args.pod is not None or args.all
     expected = 1 if fan_out else 2
     if len(args.args) != expected:
@@ -224,7 +225,7 @@ def _login(access: str) -> None:
     print("Revoke it with `t3 auth session revoke` (find it with `t3 auth session list`).")
 
 
-def _down(rig: Rig, t3: T3Cli, seat: str | None) -> int:
+def _down(rig: Rig, t3: T3, seat: str | None) -> int:
     lines, ok = down(rig, t3, seat)
     for line in lines:
         print(line)
@@ -233,7 +234,7 @@ def _down(rig: Rig, t3: T3Cli, seat: str | None) -> int:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    t3 = T3Cli()
+    t3 = T3Code(T3Cli())
     try:
         if args.command == "login":
             _login(args.access)

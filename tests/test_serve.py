@@ -4,11 +4,12 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from test_watch import IMPL, LEAD, FakeT3, FakeTracker, started
+from test_watch import IMPL, LEAD, FakeTracker, fake_t3, put, started
 
 from t3rig.rig import RigError, seat_rows
 from t3rig.serve import RigServer, check_host, create_app, sort_issues, sse_message
 from t3rig.spec import Edge, Rig, Seat, TrackerSettings
+from t3rig.threads import MemoryT3
 from t3rig.tracker import Issue
 
 
@@ -26,12 +27,10 @@ def http_client(server: RigServer) -> TestClient:
     return TestClient(create_app(server), base_url="http://127.0.0.1:8765")
 
 
-def make_server(rig: Rig, interval: float = 15) -> tuple[RigServer, FakeT3, FakeTracker]:
-    t3, tracker = FakeT3(), FakeTracker()
+def make_server(rig: Rig, interval: float = 15) -> tuple[RigServer, MemoryT3, FakeTracker]:
+    t3, tracker = fake_t3(), FakeTracker()
     started(t3)
-    server = RigServer(
-        rig, t3, interval, 0, make_tracker=lambda s: tracker, connect=None, out=lambda line: None
-    )
+    server = RigServer(rig, t3, interval, 0, make_tracker=lambda s: tracker, out=lambda line: None)
     return server, t3, tracker
 
 
@@ -51,7 +50,7 @@ def test_seats_api_is_ps_with_the_latest_message(rig: Rig) -> None:
 def test_seat_status_changes_go_to_the_stream(rig: Rig) -> None:
     server, t3, _ = make_server(rig)
     server.refresh()
-    t3.set(IMPL, 2, status="running")
+    put(t3, IMPL, 2, status="running")
     server.refresh()
     events = http_client(server).get("/api/events").json()["events"]
     assert [(e["kind"], e["text"]) for e in events] == [("seat", "dev.impl: completed → running")]
@@ -92,7 +91,7 @@ def test_page_and_scripts_are_served(rig: Rig) -> None:
 
 def test_page_escapes_seat_text(rig: Rig) -> None:
     server, t3, _ = make_server(rig)
-    t3.reply = "<script>alert(1)</script>"
+    t3.say(f"id-{IMPL}", "<script>alert(1)</script>")
     server.refresh()
     page = http_client(server).get("/").text
     assert "<script>alert(1)" not in page and "&lt;script&gt;" in page

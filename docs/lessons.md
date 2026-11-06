@@ -104,3 +104,11 @@ none recorded (it predates the rule)
   brief.
 - T3 lists no archived threads, so `log --all` wasn't built; `--thread <id>` covers a known id.
 - SSH pushes to GitHub kept hanging; pushing over HTTPS with `gh`'s credential helper worked.
+
+## 2026-11-06: [#17](https://github.com/stfngrt/t3rig/issues/17) Seat-thread module and glossary renames
+
+- The in-memory T3 adapter first returned list and show data as one dict, so a test could pass
+  while real `ps` showed no pending requests. An in-memory adapter must keep the real adapter's
+  data shapes apart.
+- `#17`'s rename scope was added in a comment the lead missed when planning; read every comment
+  before planning, not only the body and the last one.

@@ -11,7 +11,9 @@ under "Working on t3rig".
   issue: commit them straight to `main` with a clear message.
 - Don't commit, push, or change anything outside this repo except where your task says to.
 - A restricted seat stops for approval when it reads files outside this repo, so don't ask it to. If
-  it needs something from outside, read it yourself and pass the relevant text in your message.
+  it needs something from outside, dev.lead reads it and writes the relevant text to
+  `.t3rig/excerpts/<n>.md` for issue `<n>`, and points the seat at that file.
+- Only dev.impl edits files. The one exception: dev.lead writes those excerpt files.
 - Only dev.pm grills the operator or talks to them about new work. Other seats put questions in their
   final reply to their dispatcher. The lead still takes tasks from the operator, and posts its
   questions for the operator with `needs-answer` on issues; the operator answers them with dev.pm.

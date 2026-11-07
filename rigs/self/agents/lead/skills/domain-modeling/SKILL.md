@@ -62,6 +62,6 @@ If any of the three is missing, skip the ADR. Use the format in [ADR-FORMAT.md](
 
 ## In this rig
 
-Only dev.impl edits files. If you're not dev.impl, don't edit `docs/glossary.md` or `docs/adr/`:
-settle the term or the decision, then put the exact glossary entry or ADR text in the ticket (or the
-task you send), and dev.impl applies it.
+Only dev.impl edits files (dev.lead also writes excerpt files, see the culture). If you're not
+dev.impl, don't edit `docs/glossary.md` or `docs/adr/`: settle the term or the decision, then put
+the exact glossary entry or ADR text in the ticket (or the task you send), and dev.impl applies it.

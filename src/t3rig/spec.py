@@ -6,7 +6,7 @@ Anything outside the subset is refused, so a rig never runs with part of its spe
 import os
 import re
 import stat
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -112,6 +112,7 @@ FRONTMATTER = re.compile(r"^---\s*\n([\s\S]*?)\n---\s*\n?([\s\S]*)$")
 
 SETTINGS_FILE = "rig.t3rig.yaml"
 TRACKER_KINDS = ("github", "gitlab")
+TASK_SCOPES = ("issue", "round")  # A per-task seat's thread lasts one issue, or one review round.
 DEFAULT_REVIEW_ROUNDS = 2
 
 ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -190,6 +191,11 @@ class Rig:
     tracker: TrackerSettings | None = None
     review_rounds: int = DEFAULT_REVIEW_ROUNDS
     notify_seat: str | None = None
+    per_task: dict[str, str] = field(default_factory=dict)  # Seat id to task scope.
+    max_parallel: int = 1
+
+    def is_per_task(self, seat: Seat) -> bool:
+        return seat.seat_id in self.per_task
 
     def session_name(self, seat: Seat) -> str:
         """OpenRig's session name for a seat, used here as the T3 thread title."""
@@ -844,28 +850,36 @@ def _load_notify_seat(data: dict[str, Any], seats: set[str], errors: list[str]) 
     return notify_seat
 
 
-def _load_settings(
-    rig_root: Path, seats: set[str], errors: list[str]
-) -> tuple[TrackerSettings | None, int, str | None]:
-    """t3rig's own settings, kept out of `rig.yaml` so it stays OpenRig's format."""
-    path = rig_root / SETTINGS_FILE
-    if not path.exists():
-        return None, DEFAULT_REVIEW_ROUNDS, None
-    data = _read_yaml_mapping(path, SETTINGS_FILE, errors)
-    if data is None:
-        return None, DEFAULT_REVIEW_ROUNDS, None
-    _check_keys(data, {"tracker", "review_rounds", "notify_seat"}, set(), SETTINGS_FILE, errors)
-    notify_seat = _load_notify_seat(data, seats, errors)
-    rounds = data.get("review_rounds", DEFAULT_REVIEW_ROUNDS)
-    if type(rounds) is not int or rounds < 1:
-        errors.append(f"{SETTINGS_FILE}.review_rounds: must be a positive integer (got {rounds!r})")
-    raw = data.get("tracker")
+def _positive_int(data: dict[str, Any], key: str, default: int, errors: list[str]) -> int:
+    value = data.get(key, default)
+    if type(value) is not int or value < 1:
+        errors.append(f"{SETTINGS_FILE}.{key}: must be a positive integer (got {value!r})")
+    return value
+
+
+def _load_per_task(data: dict[str, Any], seats: set[str], errors: list[str]) -> dict[str, str]:
+    raw = data.get("per_task") or {}
+    if not isinstance(raw, dict):
+        errors.append(f"{SETTINGS_FILE}.per_task: must map seat ids to a task scope")
+        return {}
+    for seat, scope in raw.items():
+        if seat not in seats:
+            errors.append(f"{SETTINGS_FILE}.per_task: no seat {seat!r} in the rig")
+        if scope not in TASK_SCOPES:
+            errors.append(
+                f"{SETTINGS_FILE}.per_task.{seat}: must be one of {', '.join(TASK_SCOPES)} "
+                f"(got {scope!r})"
+            )
+    return dict(raw)
+
+
+def _load_tracker(raw: Any, seats: set[str], errors: list[str]) -> TrackerSettings | None:
     if raw is None:
-        return None, rounds, notify_seat
+        return None
     where = f"{SETTINGS_FILE}.tracker"
     if not isinstance(raw, dict):
         errors.append(f"{where}: must be a mapping")
-        return None, rounds, notify_seat
+        return None
     _check_keys(raw, {"kind", "repo", "queue_seat"}, set(), where, errors)
     kind, repo, queue_seat = raw.get("kind"), raw.get("repo"), raw.get("queue_seat")
     if kind not in TRACKER_KINDS:
@@ -874,7 +888,26 @@ def _load_settings(
         errors.append(f"{where}.repo: must be a non-empty string (got {repo!r})")
     if queue_seat not in seats:
         errors.append(f"{where}.queue_seat: no seat {queue_seat!r} in the rig")
-    return TrackerSettings(kind, repo, queue_seat), rounds, notify_seat
+    return TrackerSettings(kind, repo, queue_seat)
+
+
+def _load_settings(rig_root: Path, seats: set[str], errors: list[str]) -> dict[str, Any]:
+    """t3rig's own settings as `Rig` fields, kept out of `rig.yaml` (OpenRig's format)."""
+    path = rig_root / SETTINGS_FILE
+    if not path.exists():
+        return {}
+    data = _read_yaml_mapping(path, SETTINGS_FILE, errors)
+    if data is None:
+        return {}
+    keys = {"tracker", "review_rounds", "notify_seat", "per_task", "max_parallel"}
+    _check_keys(data, keys, set(), SETTINGS_FILE, errors)
+    return {
+        "tracker": _load_tracker(data.get("tracker"), seats, errors),
+        "review_rounds": _positive_int(data, "review_rounds", DEFAULT_REVIEW_ROUNDS, errors),
+        "notify_seat": _load_notify_seat(data, seats, errors),
+        "per_task": _load_per_task(data, seats, errors),
+        "max_parallel": _positive_int(data, "max_parallel", 1, errors),
+    }
 
 
 def load_rig(path: str | Path) -> Rig:
@@ -961,7 +994,7 @@ def load_rig(path: str | Path) -> Rig:
             _check_edge_ends(edge, True, seat_ids, where, errors)
             edges.append(edge)
 
-    tracker, review_rounds, notify_seat = _load_settings(rig_root, seat_ids, errors)
+    settings = _load_settings(rig_root, seat_ids, errors)
     if not errors:
         errors.extend(_delegation_cycles(edges))
     if errors:
@@ -972,7 +1005,5 @@ def load_rig(path: str | Path) -> Rig:
         seats=tuple(seats),
         edges=tuple(edges),
         summary=data.get("summary"),
-        tracker=tracker,
-        review_rounds=review_rounds,
-        notify_seat=notify_seat,
+        **settings,
     )

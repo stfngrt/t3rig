@@ -690,3 +690,20 @@ def test_self_rig_has_a_tracker() -> None:
         "dev.lead",
     )
     assert rig.review_rounds == 2
+
+
+def test_per_task_seats_and_max_parallel(tmp_path: Path) -> None:
+    path = write_rig(tmp_path, pods(MEMBER % ("a", "claude-code"), MEMBER % ("b", "claude-code")))
+    rig = load_rig(path)
+    assert rig.per_task == {} and rig.max_parallel == 1  # Off unless set.
+    (tmp_path / "rig.t3rig.yaml").write_text("per_task: {dev.a: issue, dev.b: round}\n")
+    rig = load_rig(path)
+    assert rig.per_task == {"dev.a": "issue", "dev.b": "round"}
+    assert rig.is_per_task(rig.seats[0])
+    (tmp_path / "rig.t3rig.yaml").write_text(
+        "per_task: {dev.a: forever, dev.x: issue}\nmax_parallel: 0\n"
+    )
+    errors = errors_for(path)
+    assert "per_task.dev.a: must be one of issue, round (got 'forever')" in errors
+    assert "rig.t3rig.yaml.per_task: no seat 'dev.x' in the rig" in errors
+    assert "rig.t3rig.yaml.max_parallel: must be a positive integer (got 0)" in errors

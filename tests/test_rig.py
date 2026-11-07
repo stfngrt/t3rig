@@ -1,3 +1,4 @@
+import dataclasses
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,7 @@ from t3rig.rig import (
     seat_rows,
     select_seats,
     send,
+    start_task,
     stop,
     up,
 )
@@ -323,3 +325,95 @@ def test_stop_reports_a_seat_that_stays_busy(tmp_path: Path) -> None:
     t3.put("dev-impl@r", threadId="i", status="running")
     result = stop(rig, t3, "dev.impl", lambda _: None, 0)
     assert result == "dev.impl: stop requested, but it's still running"
+
+
+def task_rig(tmp_path: Path, **settings: Any) -> Rig:
+    """dev.lead long-lived, dev.impl per issue."""
+    return dataclasses.replace(make_rig(tmp_path), per_task={"dev.impl": "issue"}, **settings)
+
+
+def test_up_skips_per_task_seats(tmp_path: Path) -> None:
+    rig, t3 = task_rig(tmp_path), memory(tmp_path)
+    lines = up(rig, t3)
+    assert lines == [
+        "dev.impl: per-task seat, started per task with `send --new --task`",
+        "dev.lead: started id-dev-lead@r (unknown mode)",
+    ]
+    assert [s["title"] for s in t3.started] == ["dev-lead@r"]
+
+
+def test_start_task_uses_the_seat_s_settings_and_a_brief_naming_the_task(tmp_path: Path) -> None:
+    rig = dataclasses.replace(
+        make_rig(tmp_path, model="m", runtime_mode="auto", effort="low"),
+        per_task={"dev.impl": "issue"},
+    )
+    t3 = memory(tmp_path)
+    assert (
+        start_task(rig, t3, rig.seats[1], "#18") == "dev.impl #18: started id-dev-impl@r #18 (auto)"
+    )
+    launch = next(args for name, args in t3.actions if name == "launch")
+    assert launch["title"] == "dev-impl@r #18" and launch["runtimeMode"] == "auto"
+    assert launch["modelSelection"]["options"] == {"effort": "low"}
+    brief = t3.sent[0][1]
+    assert "This thread is for one task, #18" in brief and "You are seat dev.impl" in brief
+
+
+def test_start_task_refuses_a_live_task_a_long_lived_seat_and_too_many_issues(
+    tmp_path: Path,
+) -> None:
+    rig, t3 = task_rig(tmp_path), memory(tmp_path)
+    start_task(rig, t3, rig.seats[1], "#18")
+    with pytest.raises(RigError, match="already has a live thread for task #18"):
+        start_task(rig, t3, rig.seats[1], "#18")
+    with pytest.raises(RigError, match=r"already works on #18, and max_parallel is 1"):
+        start_task(rig, t3, rig.seats[1], "#19")
+    start_task(rig, t3, rig.seats[1], "#18 r2")  # Another task of the same issue counts once.
+    with pytest.raises(RigError, match="dev.lead isn't a per-task seat"):
+        start_task(rig, t3, rig.seats[0], "#18")
+    wider = task_rig(tmp_path, max_parallel=2)
+    start_task(wider, t3, wider.seats[1], "#19")
+    assert len(t3.started) == 3
+
+
+def test_send_reaches_a_task_thread(tmp_path: Path) -> None:
+    rig, t3 = task_rig(tmp_path), memory(tmp_path)
+    t3.put("dev-impl@r #18", threadId="a18")
+    impl = select_seats(rig, "dev.impl")
+    assert send(rig, t3, impl, "fix it", task="#18")[0].error is None
+    assert send(rig, t3, impl, "and this")[0].error is None  # Its only live thread.
+    assert [to for to, _, _ in t3.sent] == ["a18", "a18"]
+    result = send(rig, t3, impl, "hi", task="#19")[0]
+    assert result.error == "dev.impl has no live thread for task #19"
+
+
+def test_down_task_archives_every_round_of_that_issue_only(tmp_path: Path) -> None:
+    rig = dataclasses.replace(
+        make_rig(tmp_path), per_task={"dev.impl": "issue", "dev.lead": "round"}
+    )
+    t3 = memory(tmp_path)
+    t3.put("dev-impl@r #18", threadId="a18", status="running")
+    t3.put("dev-lead@r #18 r1", threadId="r1", status="completed")
+    t3.put("dev-impl@r #19", threadId="a19", status="running")
+    lines, ok = down(rig, t3, task="#18")
+    assert ok and sorted(lines) == ["dev.impl #18: archived a18", "dev.lead #18 r1: archived r1"]
+    assert [t["threadId"] for t in t3.threads] == ["a19"]
+    assert [a["threadId"] for n, a in t3.actions if n == "interrupt"] == ["a18"]
+
+
+def test_log_and_rows_cover_task_threads(tmp_path: Path) -> None:
+    rig, t3 = task_rig(tmp_path), memory(tmp_path)
+    t3.put("dev-impl@r #18", threadId="a18", status="completed", link="http://t3/a18")
+    t3.say("a18", "done with #18")
+    assert log(rig, t3, "dev.impl", 1, task="#18") == "[assistant]\ndone with #18\n"
+    lead, impl = seat_rows(rig, t3)
+    assert lead["task"] is None and lead["status"] == "not started"
+    assert impl["task"] == "#18" and impl["title"] == "dev-impl@r #18"
+    assert impl["link"] == "http://t3/a18"
+
+
+def test_the_lead_s_brief_says_how_to_start_task_threads(tmp_path: Path) -> None:
+    rig = task_rig(tmp_path)
+    lead = seat_brief(rig, rig.seats[0])
+    assert "These seats get a new T3 thread per task: dev.impl." in lead
+    assert '--new --task "#N" <seat>' in lead and '--task "#N"' in lead
+    assert "per task" not in seat_brief(make_rig(tmp_path), make_rig(tmp_path).seats[0])

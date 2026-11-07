@@ -1,3 +1,4 @@
+import dataclasses
 import fcntl
 import json
 import os
@@ -778,3 +779,20 @@ def test_a_capped_tracker_list_closes_nothing(rig: Rig) -> None:
     assert notices(t3) == []
     assert "5" in watcher.state["issues"]
     assert lines[-1].startswith("the tracker's list stopped at its limit of 1 open issues")
+
+
+def test_a_task_thread_finishing_pings_the_dispatcher_naming_the_task(rig: Rig) -> None:
+    rig = dataclasses.replace(rig, per_task={"dev.impl": "issue"})
+    t3 = fake_t3()
+    put(t3, LEAD, 1)
+    put(t3, f"{IMPL} #18", 1)
+    put(t3, IMPL, 1)  # An old long-lived thread: no longer the seat's.
+    watcher, lines = make_watcher(rig, t3)
+    watcher.tick()
+    put(t3, f"{IMPL} #18", 2)
+    put(t3, IMPL, 2)
+    watcher.tick()
+    assert len(t3.sent) == 1
+    assert "- dev.impl #18 finished a run (completed)." in t3.sent[0][1]
+    assert lines == ["pinged dev.lead: dev.impl #18"]
+    assert f"{IMPL} #18" in watcher.state["seats"]  # Keyed by the task thread's title.

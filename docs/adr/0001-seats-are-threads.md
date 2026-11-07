@@ -1,6 +1,6 @@
 # A seat is a T3 thread, found by its title
 
-**Status:** accepted
+**Status:** accepted; superseded by {doc}`ADR 0008 <0008-task-threads>` for per-task seats
 
 Each {term}`seat` is a T3 {term}`thread` titled with its {term}`session name` `pod-member@rig`, "so
 no state is kept outside T3" (`8c4e2bf`). t3rig finds a seat by that title. When several threads

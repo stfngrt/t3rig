@@ -279,55 +279,149 @@ def is_busy(thread: dict[str, Any] | None) -> bool:
 
 @dataclass(frozen=True)
 class SeatThread:
-    """A seat, its session name, its current thread if any, and how many older threads share it."""
+    """A seat and one of its threads: its current thread, or for a per-task seat one live task
+    thread (ADR 0008). `thread` is None when the seat has none. `duplicates` counts older threads
+    with the same title."""
 
     seat: Seat
     session_name: str
     thread: dict[str, Any] | None
     duplicates: int = 0
+    task: str | None = None  # Such as "#18" or "#18 r2", for a task thread.
+
+    @property
+    def title(self) -> str:
+        """The thread's title: the session name, plus the task for a task thread."""
+        return task_title(self.session_name, self.task)
+
+    @property
+    def label(self) -> str:
+        """How pings and `ps` name it: the seat id, plus the task for a task thread."""
+        return f"{self.seat.seat_id} {self.task}" if self.task else self.seat.seat_id
+
+
+def task_title(session_name: str, task: str | None) -> str:
+    return f"{session_name} {task}" if task else session_name
+
+
+def issue_of(task: str) -> str:
+    """The issue a task belongs to: `#18 r2` belongs to `#18`."""
+    return task.split()[0]
+
+
+def check_task(task: str) -> str:
+    task = " ".join(task.split())
+    if not task:
+        raise RigError('--task needs a task, such as "#18" or "#18 r2"')
+    return task
 
 
 def _listed(rig: Rig, t3: T3, seats: tuple[Seat, ...] | list[Seat]) -> list[dict[str, Any]]:
-    """Every listed thread in the seats' projects, newest first."""
+    """Every listed thread in the seats' projects, newest first. Archived threads aren't listed."""
     return [t for p in sorted({str(s.cwd) for s in seats}) for t in t3.list_threads(p)]
 
 
+def _task_of(rig: Rig, seat: Seat, title: str) -> str | None:
+    """The task a thread title names for a per-task seat, or None if it isn't one of its tasks."""
+    prefix = f"{rig.session_name(seat)} "
+    return title[len(prefix) :] if rig.is_per_task(seat) and title.startswith(prefix) else None
+
+
+def thread_label(rig: Rig, seat: Seat, title: str) -> str:
+    """The seat id, plus the task if the title is one of the seat's task threads."""
+    task = _task_of(rig, seat, title)
+    return f"{seat.seat_id} {task}" if task else seat.seat_id
+
+
 def seat_threads(rig: Rig, t3: T3) -> list[SeatThread]:
-    """Each seat's current thread: the newest thread titled with its session name."""
-    threads: dict[str, dict[str, Any]] = {}
+    """Each seat's threads. A long-lived seat has one entry: the newest thread titled with its
+    session name (ADR 0001). A per-task seat has one entry per live task thread, newest first, or
+    one empty entry if it has none (ADR 0008)."""
+    newest: dict[str, dict[str, Any]] = {}
     counts: Counter[str] = Counter()
     for thread in _listed(rig, t3, rig.seats):
-        threads.setdefault(thread["title"], thread)  # Newest first, so the newest wins.
+        newest.setdefault(thread["title"], thread)  # Newest first, so the newest wins.
         counts[thread["title"]] += 1
     found = []
     for seat in rig.seats:
         name = rig.session_name(seat)
-        found.append(SeatThread(seat, name, threads.get(name), max(counts[name] - 1, 0)))
+        if not rig.is_per_task(seat):
+            found.append(SeatThread(seat, name, newest.get(name), max(counts[name] - 1, 0)))
+            continue
+        tasks = [
+            SeatThread(seat, name, thread, counts[title] - 1, task)
+            for title, thread in newest.items()
+            if (task := _task_of(rig, seat, title))
+        ]
+        found += tasks or [SeatThread(seat, name, None)]
     return found
 
 
-def seat_thread(rig: Rig, t3: T3, seat: Seat) -> dict[str, Any]:
-    """The seat's current thread, or a RigError saying to start it."""
-    thread = next(s.thread for s in seat_threads(rig, t3) if s.seat == seat)
-    if thread is None:
-        raise RigError(f"{seat.seat_id} has {NO_THREAD}")
-    return thread
+def task_threads(rig: Rig, t3: T3, seat: Seat) -> list[SeatThread]:
+    """A per-task seat's live task threads, newest first."""
+    return [s for s in seat_threads(rig, t3) if s.seat == seat and s.task]
+
+
+def seat_thread(rig: Rig, t3: T3, seat: Seat, task: str | None = None) -> dict[str, Any]:
+    """The thread to reach a seat on, or a RigError saying why there's none.
+
+    For a per-task seat: the given task's thread, or without a task its only live task thread.
+    """
+    if not rig.is_per_task(seat):
+        if task is not None:
+            raise RigError(f"{seat.seat_id} isn't a per-task seat, so it has no task threads")
+        thread = next(s.thread for s in seat_threads(rig, t3) if s.seat == seat)
+        if thread is None:
+            raise RigError(f"{seat.seat_id} has {NO_THREAD}")
+        return thread
+    live = task_threads(rig, t3, seat)
+    if task is not None:
+        found = next((s.thread for s in live if s.task == task), None)
+        if found is None:
+            raise RigError(f"{seat.seat_id} has no live thread for task {task}")
+        return found
+    if len(live) == 1 and live[0].thread is not None:
+        return live[0].thread
+    if not live:
+        raise RigError(
+            f"{seat.seat_id} has no live task thread; start one with `send --new --task`"
+        )
+    tasks = ", ".join(s.task or "" for s in live)
+    raise RigError(f"{seat.seat_id} has several task threads ({tasks}); pick one with --task")
 
 
 def thread_ids(found: list[SeatThread]) -> dict[str, str]:
-    """Seat id to current thread id, for the seats that have one."""
-    return {s.seat.seat_id: s.thread["threadId"] for s in found if s.thread}
+    """Seat id to current thread id, for long-lived seats that have one. Pings go to these."""
+    return {s.seat.seat_id: s.thread["threadId"] for s in found if s.thread and not s.task}
 
 
 def all_seat_threads(rig: Rig, t3: T3, seats: list[Seat]) -> list[tuple[Seat, dict[str, Any]]]:
-    """Every listed thread titled with one of these seats' session names, older ones included."""
+    """Every listed thread of these seats, older ones and task threads included."""
     by_name = {rig.session_name(s): s for s in seats}
-    return [(by_name[t["title"]], t) for t in _listed(rig, t3, seats) if t["title"] in by_name]
+    found = []
+    for thread in _listed(rig, t3, seats):
+        seat = by_name.get(thread["title"]) or next(
+            (s for s in seats if _task_of(rig, s, thread["title"])), None
+        )
+        if seat is not None:
+            found.append((seat, thread))
+    return found
+
+
+def issue_threads(rig: Rig, t3: T3, issue: str) -> list[tuple[Seat, str, dict[str, Any]]]:
+    """Every listed task thread of an issue, with its seat and task: all rounds of `#18`."""
+    seats = [s for s in rig.seats if rig.is_per_task(s)]
+    found = []
+    for seat, thread in all_seat_threads(rig, t3, seats):
+        task = _task_of(rig, seat, thread["title"])
+        if task and issue_of(task) == issue_of(issue):
+            found.append((seat, task, thread))
+    return found
 
 
 def earlier_thread(rig: Rig, t3: T3, seat: Seat, thread_id: str) -> None:
     """Check that a thread, perhaps archived and so unlisted, is one of the seat's."""
     title = t3.show_thread(thread_id, messages=0).get("thread", {}).get("title")
     name = rig.session_name(seat)
-    if title != name:
+    if title != name and not _task_of(rig, seat, title or ""):
         raise RigError(f"thread {thread_id} is {title!r}, not {seat.seat_id}'s {name!r}")

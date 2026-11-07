@@ -5,7 +5,7 @@
     <header>
       <div>
         <h3>{{ s.role }}</h3>
-        <p class="seat-id">{{ s.seat }}</p>
+        <p class="seat-id">{{ s.seat }}{% if s.task %} <span class="task">{{ s.task }}</span>{% endif %}</p>
       </div>
       <p class="state state-{{ s.state }}"><span class="dot" aria-hidden="true"></span>{{ STATE_WORDS[s.state] }}</p>
     </header>

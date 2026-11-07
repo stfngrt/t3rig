@@ -87,6 +87,9 @@ with the {term}`operator` and writes specs and {term}`tickets <ticket>` as GitHu
 hands it to `dev.impl` and `dev.review`. Each issue is worked in its own git worktree,
 `.worktrees/<n>` on the branch `issue-<n>`, and lands as one squash-merged pull request that
 `dev.review` reviews; the main checkout stays on `main` ({doc}`adr/0007-worktree-and-pr-per-issue`).
+`dev.impl` and `dev.review` are per-task seats: `dev.impl` gets a new {term}`task thread` per issue
+and `dev.review` one per review round, which the lead archives when the issue closes
+({doc}`adr/0008-task-threads`). `dev.lead` and `dev.pm` keep one long-lived thread each.
 The issue tracker is the interface between `dev.pm` and `dev.lead`, so there is no {term}`edge`
 between them. That also means {term}`watch` pings nobody about `dev.pm`'s runs, and its stuck or
 approval alerts print only on the `watch` console. With the tracker set in

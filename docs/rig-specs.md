@@ -25,6 +25,10 @@ tracker:
   queue_seat: dev.lead
 review_rounds: 2      # an issue can override this with a "Review rounds: N" line
 notify_seat: dev.pm   # optional: the seat that gets notices
+per_task:             # optional: seats that get a new thread per task
+  dev.impl: issue
+  dev.review: round
+max_parallel: 1       # how many issues a per-task seat works on at once
 ```
 
 - `tracker` is the issue tracker {doc}`watch` polls: `kind` picks `gh` or `glab`, `repo` is the
@@ -32,6 +36,13 @@ notify_seat: dev.pm   # optional: the seat that gets notices
   of the rig's seats.
 - `notify_seat`, optional, is the seat that gets {term}`notices <notice>` when the rig needs
   attention (see {doc}`watch`). It must be one of the rig's seats. Without it, there are no notices.
+- `per_task` names the seats that get a new T3 {term}`task thread` per task, rather than one
+  long-lived thread ({doc}`adr/0008-task-threads`). The scope says what a task is: `issue` (one
+  thread per issue, kept through its fix rounds) or `round` (one thread per review round). Such a
+  seat is started with `t3rig send --new --task "#18" <seat>`, not by `up`; see
+  {doc}`getting-started`.
+- `max_parallel`, a positive integer and 1 by default, is how many issues a per-task seat may have
+  live task threads for at once. `send --new` refuses to start one beyond it.
 - `review_rounds`, a positive integer and 2 by default, is how many review rounds a change gets.
   t3rig only checks it; the seats' instructions use it.
 

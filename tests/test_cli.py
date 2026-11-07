@@ -282,3 +282,23 @@ def test_serve_without_the_serve_extra_says_how_to_install_it(
     err = capsys.readouterr().err
     assert err.startswith("error: serve needs the serve extra")
     assert err.rstrip().endswith("run `uv sync --extra serve` in the t3rig checkout")
+
+
+def test_send_new_task_starts_the_thread_then_sends(
+    skills_rig: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from t3rig.threads import MemoryT3
+
+    (skills_rig.parent / "rig.t3rig.yaml").write_text("per_task: {dev.worker: issue}\n")
+    t3 = MemoryT3(project_root=str(skills_rig.parent))
+    monkeypatch.setattr("t3rig.cli.T3Code", lambda cli: t3)
+    rig = str(skills_rig)
+    assert main(["send", rig, "dev.worker", "--new", "--task", "#18", "build it"]) == 0
+    assert capsys.readouterr().out.startswith("dev.worker #18: started id-dev-worker@skills #18")
+    assert [m.splitlines()[-1] for _, m, _ in t3.sent][-1] == "build it"
+    assert main(["send", rig, "dev.worker", "--new", "--task", "#18", "again"]) == 1
+    assert "already has a live thread for task #18" in capsys.readouterr().err
+    assert main(["send", rig, "dev.worker", "--new", "no task"]) == 1
+    assert "--new needs --task" in capsys.readouterr().err
+    assert main(["down", rig, "--task", "#18"]) == 0
+    assert t3.threads == []

@@ -75,3 +75,25 @@ name.
 
 Threads start in the T3 project's root. A seat's `cwd` must be inside a T3 project, and the seat is
 told to change to it.
+
+## Task threads
+
+A seat named in `per_task` in `rig.t3rig.yaml` (see {doc}`rig-specs`) gets a new
+{term}`task thread` per task instead of one long-lived thread. Its title is the session name plus
+the task, such as `dev-impl@self #18` or `dev-review@self #18 r2`. `up` doesn't start these seats.
+The seat that delegates to them does, one task at a time:
+
+```sh
+uv run t3rig send rig.yaml dev.impl --new --task "#18" "Build #18 in .worktrees/18"
+uv run t3rig send rig.yaml dev.impl --task "#18" "Fix the review findings"
+uv run t3rig send rig.yaml dev.review --new --task "#18 r2" "Review round 2"
+uv run t3rig down rig.yaml --task "#18"   # archive every task thread of #18, all rounds
+```
+
+- `send --new --task` starts the thread with the seat's brief, which names the task, and the seat's
+  model, effort and runtime mode, as `up` would; then it sends the message. It refuses a task that
+  already has a live thread, and more issues at once than `max_parallel`.
+- `send --task`, `log --task` and `stop --task` reach a live task thread. Without `--task` they use
+  the seat's only live task thread, and list them if there are several.
+- `ps`, the {doc}`status page <serve>` and {doc}`watch` show and follow each live task thread under
+  its seat, and a ping names the task: `dev.impl #18 finished a run`.

@@ -88,7 +88,7 @@ def _check_seat(
     run = thread.get("latestRunId") if thread else None
     if thread is None or run is None:
         return [], {}
-    seat = status.seat.seat_id
+    seat = status.label  # The seat id, plus the task for a task thread: "dev.impl #18".
     busy = is_busy(thread)
     first_seen = entry is None
     known: dict[str, Any] = entry or {"run": None, "asked": None}
@@ -109,7 +109,8 @@ def _check_seat(
         if known["asked"] != key:
             waiting = waiting_on(thread["threadId"], details.get("itemCount", 0))
             said = f' Waiting on: "{excerpt(waiting)}"' if waiting else ""
-            stop_command = t3rig_command("stop", str(rig.path), seat)
+            task = ["--task", status.task] if status.task else []
+            stop_command = t3rig_command("stop", str(rig.path), status.seat.seat_id, *task)
             line = _thread_line(
                 f"{seat} needs input ({pending} pending request).{said} You can't approve this. "
                 f"If it can't wait for a person, run `{stop_command}` and message the seat.",
@@ -118,7 +119,7 @@ def _check_seat(
             events.append(
                 SeatEvent(
                     seat,
-                    status.session_name,
+                    status.title,
                     dispatcher,
                     line,
                     {"asked": key},
@@ -156,7 +157,7 @@ def _check_seat(
             events.append(
                 SeatEvent(
                     seat,
-                    status.session_name,
+                    status.title,
                     dispatcher,
                     line,
                     {"run": run},
@@ -191,11 +192,12 @@ class SeatWatch:
         by_dispatcher: dict[str, list[Ping]] = {}
         for status in statuses:
             dispatcher = self.dispatchers.get(status.seat.seat_id)
-            entry = self.seats.get(status.session_name)
+            # Keyed by thread title: the session name, plus the task for a task thread.
+            entry = self.seats.get(status.title)
             events, updates = _check_seat(
                 self.rig, status, entry, dispatcher, self.t3, self._waiting_on
             )
-            self._apply(status.session_name, updates)
+            self._apply(status.title, updates)
             for event in events:
                 # A dispatcher can't fix these, so a person has to hear about them too.
                 if event.needs_person:
@@ -203,7 +205,7 @@ class SeatWatch:
                     # about the notify seat isn't noticed: each notice would start a new run.
                     what = ":".join(str(v) for v in event.updates.values())
                     key = f"seat:{event.session_name}:{what}"
-                    if event.seat == self.rig.notify_seat:
+                    if status.seat.seat_id == self.rig.notify_seat:
                         key = None
                     self.delivery.alert(event.line.removeprefix("- "), key)
                 if event.dispatcher is None:

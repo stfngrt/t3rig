@@ -5,3 +5,7 @@ tracker:
   queue_seat: dev.lead
 review_rounds: 2 # an issue can override this with a "Review rounds: N" line
 notify_seat: dev.pm # gets notices when the rig needs attention (see docs/watch.md)
+per_task: # seats that get a new thread per task (see docs/adr/0008-task-threads.md)
+  dev.impl: issue # one thread per issue, through its fix rounds
+  dev.review: round # one thread per review round
+max_parallel: 1 # how many issues a per-task seat works on at once

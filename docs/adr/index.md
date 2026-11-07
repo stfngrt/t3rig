@@ -14,4 +14,5 @@ Terms are in the {doc}`../glossary`.
 0005-skills-copied-with-record
 0006-work-on-main
 0007-worktree-and-pr-per-issue
+0008-task-threads
 ```

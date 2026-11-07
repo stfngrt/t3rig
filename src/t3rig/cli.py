@@ -8,7 +8,18 @@ from datetime import UTC, datetime
 
 from t3rig import __version__
 from t3rig.mcp import ACCESS_LEVELS, login
-from t3rig.rig import RigError, ago, down, log, seat_rows, select_seats, send, stop, up
+from t3rig.rig import (
+    RigError,
+    ago,
+    down,
+    log,
+    seat_rows,
+    select_seats,
+    send,
+    start_task,
+    stop,
+    up,
+)
 from t3rig.skills import apply_skills, plan_skills
 from t3rig.spec import Rig, SpecError, load_rig
 from t3rig.t3 import T3Cli, T3Error
@@ -44,12 +55,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     down_parser.add_argument("rig", help="path to rig.yaml")
     down_parser.add_argument("--seat", help="only this seat, as pod.member")
+    down_parser.add_argument(
+        "--task",
+        metavar="TASK",
+        help='only this issue\'s task threads, every round, such as "#18"',
+    )
 
     stop_parser = commands.add_parser(
         "stop", help="Interrupt a seat's current run, keeping its thread so it can be messaged."
     )
     stop_parser.add_argument("rig", help="path to rig.yaml")
     stop_parser.add_argument("seat", help="seat as pod.member")
+    stop_parser.add_argument("--task", metavar="TASK", help="a per-task seat's task thread")
 
     ps_parser = commands.add_parser("ps", help="Show each seat's T3 thread and status.")
     ps_parser.add_argument("rig", help="path to rig.yaml")
@@ -70,10 +87,21 @@ def build_parser() -> argparse.ArgumentParser:
     send_parser.add_argument("--from", dest="sender", metavar="SEAT", help="the sending seat")
     send_parser.add_argument("--raw", action="store_true", help="leave out the From/To header")
     send_parser.add_argument("--wait", action="store_true", help="wait for the seat's reply")
+    send_parser.add_argument(
+        "--task",
+        metavar="TASK",
+        help='a per-task seat\'s task thread, such as "#18" or "#18 r2"; without it, its only one',
+    )
+    send_parser.add_argument(
+        "--new",
+        action="store_true",
+        help="start the per-task seat's thread for --task first, with its brief",
+    )
 
     log_parser = commands.add_parser("log", help="Show a seat's latest messages.")
     log_parser.add_argument("rig", help="path to rig.yaml")
     log_parser.add_argument("seat", help="seat as pod.member")
+    log_parser.add_argument("--task", metavar="TASK", help="a per-task seat's task thread")
     log_parser.add_argument(
         "--messages", type=int, default=10, help="how many messages to show (default: 10)"
     )
@@ -185,7 +213,7 @@ def _ps(rig: Rig, t3: T3, as_json: bool) -> None:
     for row in rows:
         table.append(
             (
-                row["seat"],
+                f"{row['seat']} {row['task']}" if row["task"] else row["seat"],
                 row["runtime"],
                 row["model"] or "-",
                 row["mode"] or "-",
@@ -203,7 +231,7 @@ def _ps(rig: Rig, t3: T3, as_json: bool) -> None:
         if row["extra_threads"]:
             print(
                 f"warning: {row['seat']} has {row['extra_threads']} older thread(s) titled "
-                f"{row['session_name']}; using the newest",
+                f"{row['title']}; using the newest",
                 file=sys.stderr,
             )
     if dispatchers(rig) or rig.tracker:
@@ -219,11 +247,17 @@ def _send(rig: Rig, t3: T3, args: argparse.Namespace) -> int:
         raise RigError(f"send needs {usage}")
     if fan_out and args.wait:
         raise RigError("--wait only works with one seat")
+    if fan_out and (args.task or args.new):
+        raise RigError("--task and --new only work with one seat")
+    if args.new and not args.task:
+        raise RigError('--new needs --task, such as --task "#18"')
     seat = None if fan_out else args.args[0]
     seats = select_seats(rig, seat, args.pod, args.all, args.sender)
     text = args.args[-1]
     message = sys.stdin.read() if text == "-" else text
-    results = send(rig, t3, seats, message, args.sender, args.raw, args.wait)
+    if args.new:
+        print(start_task(rig, t3, seats[0], args.task))
+    results = send(rig, t3, seats, message, args.sender, args.raw, args.wait, args.task)
     for result in results:
         if result.error:
             print(f"error: {result.seat.seat_id}: {result.error}", file=sys.stderr)
@@ -241,15 +275,21 @@ def _login(access: str) -> None:
     print("Revoke it with `t3 auth session revoke` (find it with `t3 auth session list`).")
 
 
-def _down(rig: Rig, t3: T3, seat: str | None) -> int:
-    lines, ok = down(rig, t3, seat)
+def _down(rig: Rig, t3: T3, seat: str | None, task: str | None) -> int:
+    lines, ok = down(rig, t3, seat, task)
     for line in lines:
         print(line)
     return 0 if ok else 1
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args, extra = parser.parse_known_args(argv)
+    # argparse can't take `send`'s message after options, as in `send rig seat --task "#18" msg`.
+    if extra and args.command == "send" and not any(e.startswith("-") and e != "-" for e in extra):
+        args.args += extra
+    elif extra:
+        parser.error(f"unrecognized arguments: {' '.join(extra)}")
     t3 = T3Code(T3Cli())
     try:
         if args.command == "login":
@@ -261,15 +301,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         elif args.command == "up":
             return _up(rig, t3, args.yes)
         elif args.command == "down":
-            return _down(rig, t3, args.seat)
+            return _down(rig, t3, args.seat, args.task)
         elif args.command == "stop":
-            print(stop(rig, t3, args.seat))
+            print(stop(rig, t3, args.seat, task=args.task))
         elif args.command == "ps":
             _ps(rig, t3, args.json)
         elif args.command == "send":
             return _send(rig, t3, args)
         elif args.command == "log":
-            print(log(rig, t3, args.seat, args.messages, args.thread), end="")
+            print(log(rig, t3, args.seat, args.messages, args.thread, args.task), end="")
         elif args.command in ("serve", "run"):
             try:
                 from t3rig.serve import serve

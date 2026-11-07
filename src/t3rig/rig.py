@@ -17,12 +17,17 @@ from t3rig.threads import (
     NO_THREAD,
     T3,
     RigError,
-    SeatThread,
     all_seat_threads,
+    check_task,
     earlier_thread,
     is_busy,
+    issue_of,
+    issue_threads,
     seat_thread,
     seat_threads,
+    task_threads,
+    task_title,
+    thread_label,
 )
 
 PROVIDERS = {"claude-code": "claudeAgent", "codex": "codex"}
@@ -51,7 +56,9 @@ def seat_rows(rig: Rig, t3: T3) -> list[dict[str, Any]]:
         rows.append(
             {
                 "seat": status.seat.seat_id,
+                "task": status.task,
                 "session_name": status.session_name,
+                "title": status.title,
                 "runtime": status.seat.runtime,
                 "model": thread.get("model") or status.seat.model,
                 "mode": thread.get("runtimeMode"),
@@ -97,8 +104,31 @@ def _peer_lines(rig: Rig, seat: Seat) -> list[str]:
     return lines
 
 
-def seat_brief(rig: Rig, seat: Seat) -> str:
-    """A seat's brief: the first message its thread receives."""
+def _task_lines(rig: Rig, seat: Seat, task: str | None, send_command: str) -> list[str]:
+    """What the brief says about task threads (ADR 0008)."""
+    lines = []
+    if task:
+        lines.append(
+            f"This thread is for one task, {task}, and ends with it. The seat that delegates to "
+            "you sends the task next; work only on it here."
+        )
+    workers = [
+        e.target
+        for e in rig.edges
+        if e.kind == "delegates_to" and e.source == seat.seat_id and rig.per_task.get(e.target)
+    ]
+    if workers:
+        lines.append(
+            f"These seats get a new T3 thread per task: {', '.join(workers)}. Start one with "
+            f'{send_command} --new --task "#N" <seat> "<task>" (a review round: --task "#N r2"), '
+            f'reach it again with --task "#N", and archive an issue\'s task threads with '
+            f'{t3rig_command("down", str(rig.path))} --task "#N".'
+        )
+    return lines
+
+
+def seat_brief(rig: Rig, seat: Seat, task: str | None = None) -> str:
+    """A seat's brief: the first message its thread receives. A task thread's says its task."""
     send_command = t3rig_command("send", "--from", seat.seat_id, str(rig.path))
     others = [s.seat_id for s in rig.seats if s != seat]
     parts = [
@@ -113,6 +143,7 @@ def seat_brief(rig: Rig, seat: Seat) -> str:
     peers = _peer_lines(rig, seat)
     if peers:
         parts.append("Your relationships:\n" + "\n".join(peers))
+    parts += _task_lines(rig, seat, task, send_command)
     for item in seat.startup:
         parts.append(f"Instructions from {item.path}:\n{item.text.strip()}")
     parts.append("Reply with one short line saying you're ready, then wait for instructions.")
@@ -142,11 +173,11 @@ def _archive_quietly(t3: T3, thread_id: str) -> None:
         pass  # The caller is already reporting the failure that led here.
 
 
-def _launch(rig: Rig, t3: T3, seat: Seat, status: SeatThread) -> None:
+def _launch(rig: Rig, t3: T3, seat: Seat, title: str, brief: str) -> None:
     """Launch idle, check T3 applied the settings, and only then send the brief."""
     arguments: dict[str, Any] = {
         "projectId": _project_id(t3, seat.cwd),
-        "title": status.session_name,
+        "title": title,
     }
     option = EFFORT_OPTIONS[seat.runtime]
     if seat.runtime_mode:
@@ -178,7 +209,29 @@ def _launch(rig: Rig, t3: T3, seat: Seat, status: SeatThread) -> None:
                 f"{seat.seat_id}: wanted {name} {wanted}, but T3 applied {actual}; "
                 "archived the thread before it started"
             )
-    t3.send(thread_id, seat_brief(rig, seat))
+    t3.send(thread_id, brief)
+
+
+def _start(rig: Rig, t3: T3, seat: Seat, title: str, brief: str) -> None:
+    """Start a thread titled `title` for a seat, with its settings, and send it the brief."""
+    if _needs_mcp(seat):
+        _launch(rig, t3, seat, title, brief)
+    else:
+        provider = PROVIDERS[seat.runtime] if seat.model else None
+        t3.start_thread(str(seat.cwd), title, brief, provider, seat.model)
+
+
+def _check_started(seat: Seat, title: str, thread: dict[str, Any] | None) -> str:
+    """Check T3 started the thread on the seat's runtime. Returns its line for the output."""
+    if thread is None:
+        raise RigError(f"{seat.seat_id}: started, but no thread titled {title}")
+    provider = thread.get("providerInstanceId")
+    if provider != PROVIDERS[seat.runtime]:
+        raise RigError(
+            f"{seat.seat_id}: expected {seat.runtime}, but T3 used {provider}. "
+            "Set a model on this seat or change the project's default."
+        )
+    return f"started {thread['threadId']} ({thread.get('runtimeMode', 'unknown mode')})"
 
 
 def _preflight(seats: list[Seat], t3: T3) -> None:
@@ -207,6 +260,13 @@ def up(rig: Rig, t3: T3) -> list[str]:
     lines = []
     to_start = []
     for status in seat_threads(rig, t3):
+        if rig.is_per_task(status.seat):
+            if status.task is None:  # One line per seat, not per task thread.
+                lines.append(
+                    f"{status.seat.seat_id}: per-task seat, started per task with "
+                    "`send --new --task`"
+                )
+            continue
         if status.thread is None:
             to_start.append(status)
         else:
@@ -215,44 +275,63 @@ def up(rig: Rig, t3: T3) -> list[str]:
     _preflight([s.seat for s in to_start], t3)
 
     for status in to_start:
-        seat = status.seat
-        if _needs_mcp(seat):
-            _launch(rig, t3, seat, status)
-        else:
-            provider = PROVIDERS[seat.runtime] if seat.model else None
-            t3.start_thread(
-                str(seat.cwd), status.session_name, seat_brief(rig, seat), provider, seat.model
-            )
+        _start(rig, t3, status.seat, status.session_name, seat_brief(rig, status.seat))
 
     started = {status.seat for status in to_start}
     for status in seat_threads(rig, t3):
-        seat = status.seat
-        if seat not in started:
-            continue
-        if status.thread is None:
-            raise RigError(f"{seat.seat_id}: started, but no thread titled {status.session_name}")
-        provider = status.thread.get("providerInstanceId")
-        if provider != PROVIDERS[seat.runtime]:
-            raise RigError(
-                f"{seat.seat_id}: expected {seat.runtime}, but T3 used {provider}. "
-                "Set a model on this seat or change the project's default."
-            )
-        mode = status.thread.get("runtimeMode", "unknown mode")
-        lines.append(f"{seat.seat_id}: started {status.thread['threadId']} ({mode})")
+        if status.seat in started:
+            started_line = _check_started(status.seat, status.session_name, status.thread)
+            lines.append(f"{status.seat.seat_id}: {started_line}")
     return lines
 
 
-def down(rig: Rig, t3: T3, seat: str | None = None) -> tuple[list[str], bool]:
-    """Interrupt and archive seats' threads, keeping transcripts. Returns lines and success."""
+def start_task(rig: Rig, t3: T3, seat: Seat, task: str) -> str:
+    """Start a per-task seat's thread for a task, with its brief. Returns a line for the output.
+
+    Refused if the seat isn't per-task, the task has a live thread already, or the seat would
+    work on more than `max_parallel` issues at once.
+    """
+    if not rig.is_per_task(seat):
+        raise RigError(
+            f"{seat.seat_id} isn't a per-task seat; add it to per_task in rig.t3rig.yaml"
+        )
+    task = check_task(task)
+    live = task_threads(rig, t3, seat)
+    if any(s.task == task for s in live):
+        raise RigError(f"{seat.seat_id} already has a live thread for task {task}")
+    issues = {issue_of(s.task or "") for s in live}
+    if issue_of(task) not in issues and len(issues) >= rig.max_parallel:
+        raise RigError(
+            f"{seat.seat_id} already works on {', '.join(sorted(issues))}, and max_parallel is "
+            f"{rig.max_parallel}; archive a finished issue's threads with `down --task` first"
+        )
+    _preflight([seat], t3)
+    title = task_title(rig.session_name(seat), task)
+    _start(rig, t3, seat, title, seat_brief(rig, seat, task))
+    thread = next((s.thread for s in task_threads(rig, t3, seat) if s.task == task), None)
+    return f"{seat.seat_id} {task}: {_check_started(seat, title, thread)}"
+
+
+def down(
+    rig: Rig, t3: T3, seat: str | None = None, task: str | None = None
+) -> tuple[list[str], bool]:
+    """Interrupt and archive seats' threads, keeping transcripts. Returns lines and success.
+
+    With `task`, only that issue's task threads, every seat's and every round's.
+    """
     seats = select_seats(rig, seat, everyone=seat is None)
-    # Older threads with a seat's title go too, or the next one would become the seat's thread.
-    threads = all_seat_threads(rig, t3, seats)
+    if task is not None:
+        found = issue_threads(rig, t3, check_task(task))
+        threads = [(s, t) for s, _, t in found if s in seats]
+    else:
+        # Older threads with a seat's title go too, or the next would become the seat's thread.
+        threads = all_seat_threads(rig, t3, seats)
     if not threads:
         return ["no threads to stop"], True
     t3.access()  # Sign in first, so a missing sign-in is one error rather than one per thread.
     lines, ok = [], True
     for owner, thread in threads:
-        name, thread_id = owner.seat_id, thread["threadId"]
+        name, thread_id = thread_label(rig, owner, thread["title"]), thread["threadId"]
         try:
             if is_busy(thread):
                 t3.interrupt(thread_id)
@@ -261,10 +340,13 @@ def down(rig: Rig, t3: T3, seat: str | None = None) -> tuple[list[str], bool]:
         except T3Error as error:
             lines.append(f"{name}: couldn't stop {thread_id}: {error}")
             ok = False
-    still_listed = {t["threadId"] for _, t in all_seat_threads(rig, t3, seats)}
+    still_listed = {
+        t["threadId"] for p in sorted({str(s.cwd) for s in seats}) for t in t3.list_threads(p)
+    }
     for owner, thread in threads:
         if thread["threadId"] in still_listed and ok:
-            lines.append(f"{owner.seat_id}: {thread['threadId']} is still active")
+            label = thread_label(rig, owner, thread["title"])
+            lines.append(f"{label}: {thread['threadId']} is still active")
             ok = False
     return lines, ok
 
@@ -275,10 +357,11 @@ def stop(
     seat: str,
     sleep: Callable[[float], None] = time.sleep,
     wait_seconds: float = 30,
+    task: str | None = None,
 ) -> str:
     """Interrupt a seat's current run, keeping its thread so it can be messaged again."""
     (chosen,) = select_seats(rig, seat)
-    thread = seat_thread(rig, t3, chosen)
+    thread = seat_thread(rig, t3, chosen, check_task(task) if task else None)
     if not is_busy(thread):
         return f"{chosen.seat_id}: nothing to stop ({thread.get('status')})"
     thread_id = thread["threadId"]
@@ -325,14 +408,26 @@ def send(
     sender: str | None = None,
     raw: bool = False,
     wait: bool = False,
+    task: str | None = None,
 ) -> list[SendResult]:
-    """Message each seat. One seat failing doesn't stop the others."""
-    threads = {s.seat: s.thread for s in seat_threads(rig, t3)}
+    """Message each seat. One seat failing doesn't stop the others.
+
+    A per-task seat gets it on its `task`'s thread, or on its only live task thread.
+    """
+    task = check_task(task) if task is not None else None
+    threads = {s.seat: s.thread for s in seat_threads(rig, t3) if not s.task}
     recipients = ", ".join(seat.seat_id for seat in seats)
     body = message if raw else envelope(sender or DEFAULT_SENDER, recipients, message)
     results = []
     for seat in seats:
-        thread = threads.get(seat)
+        if rig.is_per_task(seat) or task is not None:
+            try:
+                thread = seat_thread(rig, t3, seat, task)
+            except RigError as error:
+                results.append(SendResult(seat, error=str(error)))
+                continue
+        else:
+            thread = threads.get(seat)
         if thread is None:
             results.append(SendResult(seat, error=NO_THREAD))
             continue
@@ -343,13 +438,21 @@ def send(
     return results
 
 
-def log(rig: Rig, t3: T3, seat: str, messages: int, thread_id: str | None = None) -> str:
-    """A seat's latest messages, as `t3 thread show` prints them; or the earlier `thread_id`."""
+def log(
+    rig: Rig,
+    t3: T3,
+    seat: str,
+    messages: int,
+    thread_id: str | None = None,
+    task: str | None = None,
+) -> str:
+    """A seat's latest messages, as `t3 thread show` prints them; or the earlier `thread_id`.
+    A per-task seat's come from its `task`'s thread, or its only live task thread."""
     if messages < 1:
         raise RigError("--messages must be at least 1")
     (chosen,) = select_seats(rig, seat)
     if thread_id is None:
-        thread_id = seat_thread(rig, t3, chosen)["threadId"]
+        thread_id = seat_thread(rig, t3, chosen, check_task(task) if task else None)["threadId"]
     else:
         earlier_thread(rig, t3, chosen, thread_id)
     return t3.thread_text(thread_id, messages)

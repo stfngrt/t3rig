@@ -53,7 +53,8 @@ The page is meant to be read at a glance: what needs you, what the rig is doing,
 - **Queue:** open issues labelled {term}`rig-queue` or {term}`in-progress`, the one in progress
   first and highlighted, then the rest by issue number. The lead takes work in the order of the
   project board, which the page doesn't show yet.
-- **Seats:** one card per {term}`seat`, with:
+- **Seats:** one card per {term}`seat`, or for a per-task seat one per live {term}`task thread`
+  (its seat id shows the task, and the issue it's on comes from the task), with:
   - its role in words (Lead, Implementer, Reviewer, Project manager; other roles are taken from the
     seat id) above the seat id;
   - what it's doing, as a word with a coloured dot: working, idle, waiting for you, failed, or not

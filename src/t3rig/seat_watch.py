@@ -132,8 +132,9 @@ def _check_seat(
         updates["asked"] = None
 
     if not busy and run != known["run"]:
-        if first_seen or details.get("runCount", 0) <= 1:
-            # History from before watching, or the seat's reply to its brief.
+        # A long-lived thread first seen finished holds history from before watching. A task
+        # thread can start and finish between two checks, so only its brief's reply is skipped.
+        if (first_seen and not status.task) or details.get("runCount", 0) <= 1:
             updates["run"] = run
         else:
             # The newest message can be one sent to the seat, which isn't a reply.
@@ -186,9 +187,21 @@ class SeatWatch:
         if updates:
             self.seats.setdefault(session_name, {"run": None, "asked": None}).update(updates)
 
+    def _forget_archived_tasks(self, statuses: list[SeatThread]) -> None:
+        """Drop the state of task threads no longer listed: archived, like a closed issue."""
+        live = {s.title for s in statuses}
+        prefixes = tuple(
+            f"{self.rig.session_name(seat)} "
+            for seat in self.rig.seats
+            if self.rig.is_per_task(seat)
+        )
+        for title in [t for t in self.seats if t.startswith(prefixes) and t not in live]:
+            del self.seats[title]
+
     def check(self) -> None:
         """One round: ping dispatchers about every seat that changed."""
         statuses = seat_threads(self.rig, self.t3)
+        self._forget_archived_tasks(statuses)
         by_dispatcher: dict[str, list[Ping]] = {}
         for status in statuses:
             dispatcher = self.dispatchers.get(status.seat.seat_id)

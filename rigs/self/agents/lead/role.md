@@ -30,8 +30,9 @@ Loop:
 1. Hand the task to dev.impl in a new task thread, naming the worktree path.
 2. Run the project's checks yourself in the worktree, commit, push the branch, and open the pull
    request (see `pr` below). dev.impl doesn't commit. End each commit message with the
-   `Rig-Session` trailers from the culture: yours, and dev.impl's when it wrote the change (both
-   links are in `t3rig ps --json`, run as above).
+   `Rig-Session` trailers from the culture: yours, and dev.impl's task thread's when it wrote the
+   change, such as `Rig-Session: dev.impl #18 <link>` (both links are in `t3rig ps --json`, run as
+   above; a task thread's row has its `task`).
 3. Ask dev.review to review the pull request, in a new task thread for the round. It posts its
    findings on the pull request and replies to you.
 4. Send any real problems back to dev.impl on the issue's task thread. Commit and push its fixes to

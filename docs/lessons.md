@@ -138,3 +138,11 @@ none recorded (it predates the rule)
 
 - The docs site deploys from `main`, so install docs changed for a release that hasn't happened
   would mislead readers at once. Docs for a future release go in the release PR's checklist.
+
+## 2026-11-07: [#33](https://github.com/stfngrt/t3rig/issues/33) Task threads
+
+- `watch` treated a thread's first sight as history, which was right for threads that exist when it
+  starts but loses pings for threads created while it runs. Check first-sight rules whenever
+  something new can appear mid-run.
+- T3's own worktrees sit outside the repo, away from the installed skills and the rig's paths, so
+  task threads stay on `.worktrees/<n>`.

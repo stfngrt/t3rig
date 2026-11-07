@@ -796,3 +796,38 @@ def test_a_task_thread_finishing_pings_the_dispatcher_naming_the_task(rig: Rig) 
     assert "- dev.impl #18 finished a run (completed)." in t3.sent[0][1]
     assert lines == ["pinged dev.lead: dev.impl #18"]
     assert f"{IMPL} #18" in watcher.state["seats"]  # Keyed by the task thread's title.
+
+
+def test_a_task_thread_first_seen_finished_is_pinged_unless_it_only_read_its_brief(
+    rig: Rig,
+) -> None:
+    rig = dataclasses.replace(rig, per_task={"dev.impl": "issue"})
+    t3 = fake_t3()
+    put(t3, LEAD, 1)
+    watcher, _ = make_watcher(rig, t3)
+    watcher.tick()
+    put(t3, f"{IMPL} #18", 1)  # Started and replied to its brief between two checks.
+    put(t3, f"{IMPL} #19", 2)  # Started, given its task and finished between two checks.
+    t3.say(f"id-{IMPL} #19", "built #19", "assistant")
+    watcher.tick()
+    watcher.tick()
+    assert len(t3.sent) == 1
+    assert "dev.impl #19 finished a run (completed)." in t3.sent[0][1]
+    assert "#18" not in t3.sent[0][1]
+
+
+def test_an_archived_task_thread_s_state_is_forgotten(rig: Rig) -> None:
+    rig = dataclasses.replace(rig, per_task={"dev.impl": "issue"})
+    t3 = fake_t3()
+    started(t3)
+    put(t3, f"{IMPL} #18", 1)
+    watcher, _ = make_watcher(rig, t3)
+    watcher.state["seats"][IMPL] = {"run": "old", "asked": None}  # From before it was per-task.
+    watcher.tick()
+    assert f"{IMPL} #18" in watcher.state["seats"]
+    t3.access_level = "auto"
+    t3.archive(f"id-{IMPL} #18")
+    watcher.tick()
+    assert f"{IMPL} #18" not in watcher.state["seats"]
+    # Long-lived entries stay, including a per-task seat's old one, as for closed issues.
+    assert {IMPL, LEAD, QA} <= set(watcher.state["seats"])

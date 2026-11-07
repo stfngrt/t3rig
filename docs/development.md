@@ -90,6 +90,13 @@ hands it to `dev.impl` and `dev.review`. Each issue is worked in its own git wor
 `dev.impl` and `dev.review` are per-task seats: `dev.impl` gets a new {term}`task thread` per issue
 and `dev.review` one per review round, which the lead archives when the issue closes
 ({doc}`adr/0008-task-threads`). `dev.lead` and `dev.pm` keep one long-lived thread each.
+
+**Cutover to task threads (#33).** After #33 merges, the lead archives the old long-lived
+`dev-impl@self` and `dev-review@self` threads with `t3rig down <rig> --seat dev.impl` and
+`--seat dev.review`: with `per_task` set they're no longer either seat's thread, so `ps`, `watch`
+and `send` stop showing them. The loop (`watch`, `serve` or `run`) must also be restarted on the
+new code before the first task thread starts, because an older loop doesn't follow task threads
+and wouldn't ping when one finishes.
 The issue tracker is the interface between `dev.pm` and `dev.lead`, so there is no {term}`edge`
 between them. That also means {term}`watch` pings nobody about `dev.pm`'s runs, and its stuck or
 approval alerts print only on the `watch` console. With the tracker set in

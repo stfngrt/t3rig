@@ -17,4 +17,4 @@ one skill id on two seats only if the files match.
 - `ADR-FORMAT.md`: ADRs are pages of the site, new ones go in the `docs/adr/index.md` toctree, and the
   "create the directory lazily" sentence is dropped. The optional Status is a `**Status:**` line, not
   frontmatter.
-- `SKILL.md`: added an "In this rig" section at the end. Only dev.impl edits files (dev.lead also writes excerpt files); any other seat writes the glossary entry or ADR text into the ticket and dev.impl applies it.
+- `SKILL.md`: added an "In this rig" section at the end. Among dev.lead, dev.impl and dev.review, only dev.impl edits files (dev.lead's one exception is excerpt files); any other seat writes the glossary entry or ADR text into the ticket and dev.impl applies it.

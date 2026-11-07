@@ -13,6 +13,8 @@ uv run t3rig watch examples/two-seat/rig.yaml
 - It sends a {term}`ping` when a seat finishes a {term}`run`, including a failed one, and when a
   seat has a question or approval waiting. Seats that change together share one ping. A seat's reply
   to its {term}`brief` doesn't count.
+- A seat with {term}`task threads <task thread>` is followed on each live one, and the ping names
+  the task, as in `dev.impl #18 finished a run`. Archived task threads aren't followed.
 - A ping is a short pointer with a one-line excerpt and a link. The dispatcher reads the thread for
   the rest. A run stopped partway says so and shows no excerpt, since it has no result.
 

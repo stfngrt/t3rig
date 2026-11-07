@@ -23,11 +23,12 @@ under "Working on t3rig".
   every issue body, comment, pull request description and pull request review you write with
   `🤖 <seat> (t3rig) · <thread link>`, such as
   `🤖 dev.lead (t3rig) · https://app.t3.codes/threads/...`. That tells the operator's posts and the
-  rig's apart, and leads to the session that wrote each one. Get your thread link once per session:
+  rig's apart, and leads to the session that wrote each one. Get your thread link once per thread:
   it's the `link` in your row of `t3rig ps --json <rig>`, run with the same command and rig path as
-  the `send` command in your brief. Commits the lead makes end with a trailer
-  `Rig-Session: dev.lead <thread link>`, and also `Rig-Session: dev.impl <thread link>` when
-  dev.impl wrote the change.
+  the `send` command in your brief. A per-task seat (dev.impl, dev.review) takes the row whose
+  `task` is its thread's task. Commits the lead makes end with a trailer
+  `Rig-Session: dev.lead <thread link>`, and also one for dev.impl's task thread when dev.impl
+  wrote the change, naming the task: `Rig-Session: dev.impl #18 <thread link>`.
 - Review rounds: at most `review_rounds` from `rig.t3rig.yaml` (2 here) per change, unless the issue
   body has a line `Review rounds: N`. Round 1 reviews the whole change; later rounds check only the
   fixes and what they broke, with no new nitpicks. At the limit, remaining findings go under "Left

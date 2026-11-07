@@ -12,8 +12,11 @@ its own pull request), and also give them in your final reply.
 Use the `code-review` skill, which reviews standards and the issue's requirements separately. Don't
 grill anyone, and don't stop to ask: put questions in your final reply, and dev.lead answers by sending the next task.
 
-In a later round, check only the new commits dev.lead names (`git log` and `git diff` of them in the
-worktree), and what they broke, and raise no new nitpicks (see the culture's review rules).
+Each review round gets its own thread (see `docs/adr/0008-task-threads.md`), so you start each
+round fresh. In a later round, read your earlier findings on the pull request
+(`gh pr view <pr> --comments`), and check only the new commits dev.lead names (`git log` and
+`git diff` of them in the worktree), and what they broke, and raise no new nitpicks (see the
+culture's review rules).
 
 Check any new term in a change against `docs/glossary.md`: it should use the preferred word, not an
 _Avoid_ one.

@@ -357,3 +357,17 @@ def test_a_failing_round_is_noticed_once(rig: Rig) -> None:
     to_qa = [m for to, m, _ in t3.sent if to == f"id-{QA}"]
     assert len(to_qa) == 1
     assert "- ALERT: watch round failed, will retry: ValueError('boom')" in to_qa[0]
+
+
+def test_seat_cards_show_task_threads_with_their_issue(rig: Rig) -> None:
+    rig = dataclasses.replace(rig, per_task={"dev.impl": "issue"})
+    server, t3, tracker = make_server(rig)
+    put(t3, f"{IMPL} #9", 2, status="running")
+    tracker.labels[9] = {"rig-queue", "in-progress"}
+    assert server.watcher is not None
+    server.watcher.poll_tracker()
+    server.refresh()
+    seats = server.fragment("seats")
+    assert '<span class="task">#9</span>' in seats
+    assert 'On <a href="https://t/issues/9">#9 Issue 9</a>' in seats
+    assert http_client(server).get("/api/seats").json()["seats"][1]["task"] == "#9"

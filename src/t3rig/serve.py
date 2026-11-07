@@ -25,7 +25,7 @@ from t3rig.issue_watch import ANSWER_LABEL, IN_PROGRESS_LABEL, QUEUE_LABEL
 from t3rig.rig import RigError, ago, seat_rows
 from t3rig.spec import Rig
 from t3rig.t3 import T3Error
-from t3rig.threads import BUSY_STATUSES, T3
+from t3rig.threads import BUSY_STATUSES, T3, issue_of
 from t3rig.tracker import Issue, Tracker, tracker_for
 from t3rig.watch import (
     Watcher,
@@ -119,12 +119,16 @@ class PageView:
         in_progress = [i for i in self.queue if IN_PROGRESS_LABEL in i["labels"]]
         self.current = in_progress[0] if len(in_progress) == 1 else None
         queue_seat = rig.tracker.queue_seat if rig.tracker else None
+        by_number = {f"#{i['number']}": i for i in [*self.questions, *self.approvals, *self.queue]}
         self.seats = []
         for row in seats:
             state = seat_state(row)
-            # Only the queue seat's issue is known: it holds one `in-progress` issue at a time,
-            # including while it waits for another seat.
-            on = self.current if row["seat"] == queue_seat else None
+            # A task thread's issue is its task's. Otherwise only the queue seat's is known: it
+            # holds one `in-progress` issue at a time, including while it waits for another seat.
+            if row["task"]:
+                on = by_number.get(issue_of(row["task"]))
+            else:
+                on = self.current if row["seat"] == queue_seat else None
             self.seats.append(row | {"role": role_name(row["seat"]), "state": state, "issue": on})
 
     def summary(self) -> list[str]:
@@ -198,11 +202,12 @@ class RigServer:
         except T3Error as error:
             self.log(f"can't read seats, will retry: {error}", "error")
             return
-        before = {row["seat"]: row["status"] for row in self.seats}
+        before = {row["title"]: row["status"] for row in self.seats}  # A task thread's own.
         for row in seats:
-            old = before.get(row["seat"])
+            old = before.get(row["title"])
             if old is not None and old != row["status"]:
-                self.log(f"{row['seat']}: {old} → {row['status']}", "seat")
+                label = f"{row['seat']} {row['task']}" if row["task"] else row["seat"]
+                self.log(f"{label}: {old} → {row['status']}", "seat")
         self.seats = seats
         if self.watcher is not None:
             self.issues = self.watcher.open_issues()

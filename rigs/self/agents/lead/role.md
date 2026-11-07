@@ -13,17 +13,32 @@ same command and rig path as the `send` command in your brief: `watch`'s lock is
 path, so `ps` on a worktree's `rigs/self/rig.yaml` always says it isn't running.
 
 Each issue is worked in its own worktree, `.worktrees/<N>` on the branch `issue-<N>`, and reviewed
-as a pull request; the main checkout stays on `main` and untouched (see the ticket queue). Loop:
+as a pull request; the main checkout stays on `main` and untouched (see the ticket queue).
 
-1. Hand the task to dev.impl, naming the worktree path.
+dev.impl and dev.review are per-task seats: each task gets a new T3 thread, titled with the task
+(`docs/adr/0008-task-threads.md`). dev.impl gets one thread per issue, kept through its fix rounds;
+dev.review gets a fresh one per review round. Use the `send` command from your brief:
+
+- `send --new --task "#N" dev.impl "…"` starts dev.impl's thread for issue N with its brief, then
+  sends the task. Later messages for that issue go to `send --task "#N" dev.impl "…"`.
+- `send --new --task "#N rK" dev.review "…"` starts review round K's thread (`#N r1`, `#N r2`, …).
+- `max_parallel` in `rigs/self/rig.t3rig.yaml` caps how many issues a per-task seat works on at
+  once; `send --new` refuses beyond it.
+
+Loop:
+
+1. Hand the task to dev.impl in a new task thread, naming the worktree path.
 2. Run the project's checks yourself in the worktree, commit, push the branch, and open the pull
    request (see `pr` below). dev.impl doesn't commit. End each commit message with the
-   `Rig-Session` trailers from the culture: yours, and dev.impl's when it wrote the change (both
-   links are in `t3rig ps --json`, run as above).
-3. Ask dev.review to review the pull request. It posts its findings on the pull request and replies
-   to you.
-4. Send any real problems back to dev.impl. Commit and push its fixes to the same branch, rewrite
-   the pull request body if the change moved, and ask dev.review to check only the new commits.
+   `Rig-Session` trailers from the culture: yours, and dev.impl's task thread's when it wrote the
+   change, such as `Rig-Session: dev.impl #18 <link>` (both links are in `t3rig ps --json`, run as
+   above; a task thread's row has its `task`).
+3. Ask dev.review to review the pull request, in a new task thread for the round. It posts its
+   findings on the pull request and replies to you.
+4. Send any real problems back to dev.impl on the issue's task thread. Commit and push its fixes to
+   the same branch, rewrite the pull request body if the change moved, and start the next review
+   round's thread, asking it to check only the new commits; it reads the earlier findings on the
+   pull request.
 
 Follow the review-round limit in the culture, even if review still has objections. Read the
 questions in a seat's final reply, and answer them in the next task you send it.
@@ -95,13 +110,15 @@ can follow it without opening T3.
    `gh pr merge <pr> --squash --subject "<title> (#N)"`. Then delete the remote branch if it's still
    there (`git push origin --delete issue-<N>`), run `git worktree remove .worktrees/<N>` and
    `git branch -D issue-<N>`, and update `main` with `git pull --ff-only`. If the issue's "done when"
-   needs something after the merge (such as CI runs on `main`), check it with `gh`.
-4. Comment a short summary on the issue: what changed, a link to the pull request, the checks, what
-   review found, what's left open, seats you stopped, and any "Questions for the operator". End the
-   comment with a line `Lessons:` giving the same lessons. Then remove `rig-queue` and
-   `in-progress`. Merging closes the issue through `Closes #N`. If the comment has "Questions for
-   the operator", reopen it (`gh issue reopen`) and add `needs-answer`. `dev.pm` removes
-   `needs-answer` when the operator has answered.
+   needs something after the merge (such as CI runs on `main`), check it with `gh`. Before you
+   archive them, note the links of the issue's task threads (`t3rig ps --json` lists them under
+   their seats), then archive them with `t3rig down <rig> --task "#N"`.
+4. Comment a short summary on the issue: what changed, a link to the pull request, a link to each of
+   the issue's task threads, the checks, what review found, what's left open, seats you stopped, and
+   any "Questions for the operator". End the comment with a line `Lessons:` giving the same lessons.
+   Then remove `rig-queue` and `in-progress`. Merging closes the issue through `Closes #N`. If the
+   comment has "Questions for the operator", reopen it (`gh issue reopen`) and add `needs-answer`.
+   `dev.pm` removes `needs-answer` when the operator has answered.
 5. If you can't finish it, comment why and what the operator must decide, remove `rig-queue` and
    `in-progress`, add `needs-answer`, and move to the next issue. There is no `blocked` label. Undo
    the issue's changes by closing its pull request, if there is one, and removing its worktree and

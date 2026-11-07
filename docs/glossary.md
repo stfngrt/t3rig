@@ -132,6 +132,12 @@ Thread
   object, "session name" the OpenRig name it carries.
   _Avoid_: session, pane
 
+Task thread
+  A T3 {term}`thread` a per-task {term}`seat` gets for one piece of work: one issue for dev.impl,
+  one review round for dev.review. Its title is the seat's {term}`session name` plus the task, for
+  example `dev-impl@self #18`.
+  _Avoid_: sub-thread, worker thread
+
 Run
   What a seat does between a message and going idle again; T3 reports its state on the thread.
   `watch` pings when one ends. (A prompt that tells an agent to "end your turn" means the same

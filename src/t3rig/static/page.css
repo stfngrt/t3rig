@@ -90,6 +90,7 @@ h2 { font-size: 1rem; font-weight: 600; margin: 0 0 12px; }
 .card header { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
 .card h3 { font-size: 1.1rem; font-weight: 600; }
 .seat-id { color: var(--muted); font-family: var(--mono); font-size: .85rem; }
+.seat-id .task { color: var(--text); font-weight: 600; }
 .state { display: flex; align-items: center; gap: 8px; white-space: nowrap; font-size: .95rem; }
 .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--idle); flex: none; }
 .state-working .dot { background: var(--working); }

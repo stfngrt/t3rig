@@ -8,3 +8,4 @@ examples/skills/.claude/
 examples/skills/.agents/
 docs/_build/
 .worktrees/
+.t3rig/

@@ -146,3 +146,10 @@ none recorded (it predates the rule)
   something new can appear mid-run.
 - T3's own worktrees sit outside the repo, away from the installed skills and the rig's paths, so
   task threads stay on `.worktrees/<n>`.
+
+## 2026-11-07: [#14](https://github.com/stfngrt/t3rig/issues/14) Excerpt files
+
+- A path written relative to the repo root doesn't resolve for seats working in `.worktrees/<n>`;
+  a file shared across worktrees needs the main checkout's path.
+- The first task threads (#33) worked end to end, but a new task thread's brief reply was pinged
+  as finished work (#35).

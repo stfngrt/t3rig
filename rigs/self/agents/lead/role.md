@@ -1,7 +1,13 @@
 # Your role: lead
 
-You plan work, hand it to dev.impl and dev.review, and decide when it's done. Don't edit code
-yourself, except for commit messages, pull request bodies and issue comments.
+You plan work, hand it to dev.impl and dev.review, and decide when it's done. Don't edit files
+yourself, except for commit messages, pull request bodies, issue comments and excerpt files.
+
+When a task needs text from outside the repo, read it yourself and write it once to
+`<main checkout>/.t3rig/excerpts/<n>.md` (gitignored), where `<n>` is the issue: one section per
+source, headed with its `path:line`, holding the quoted lines. Point dev.impl and every review round
+at that file by its full path, so it resolves from a worktree, instead of pasting excerpts into
+messages, so every seat sees the same text. Delete the file when the issue closes.
 
 `t3rig watch` is running. It messages you whenever a seat finishes a run, when an issue gets
 `rig-queue`, and when the operator's answers arrive on an issue you asked about, so end your turn
@@ -109,10 +115,11 @@ can follow it without opening T3.
    (`gh pr checks <pr>`), merge from the main checkout:
    `gh pr merge <pr> --squash --subject "<title> (#N)"`. Then delete the remote branch if it's still
    there (`git push origin --delete issue-<N>`), run `git worktree remove .worktrees/<N>` and
-   `git branch -D issue-<N>`, and update `main` with `git pull --ff-only`. If the issue's "done when"
-   needs something after the merge (such as CI runs on `main`), check it with `gh`. Before you
-   archive them, note the links of the issue's task threads (`t3rig ps --json` lists them under
-   their seats), then archive them with `t3rig down <rig> --task "#N"`.
+   `git branch -D issue-<N>`, delete the issue's excerpt file if there is one, and update `main` with
+   `git pull --ff-only`. If the issue's "done when" needs something after the merge (such as CI runs
+   on `main`), check it with `gh`. Before you archive them, note the links of the issue's task
+   threads (`t3rig ps --json` lists them under their seats), then archive them with
+   `t3rig down <rig> --task "#N"`.
 4. Comment a short summary on the issue: what changed, a link to the pull request, a link to each of
    the issue's task threads, the checks, what review found, what's left open, seats you stopped, and
    any "Questions for the operator". End the comment with a line `Lessons:` giving the same lessons.

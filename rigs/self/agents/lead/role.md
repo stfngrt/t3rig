@@ -18,8 +18,11 @@ reply, or on the issue with `needs-answer`) instead of ending your turn to wait.
 same command and rig path as the `send` command in your brief: `watch`'s lock is keyed by that
 path, so `ps` on a worktree's `rigs/self/rig.yaml` always says it isn't running.
 
-Each issue is worked in its own worktree, `.worktrees/<N>` on the branch `issue-<N>`, and reviewed
-as a pull request; the main checkout stays on `main` and untouched (see the ticket queue).
+Each issue is worked in its own worktree on the branch `issue-<N>`, and reviewed as a pull request;
+the main checkout stays on `main` and untouched (see the ticket queue). t3rig creates the worktree
+with the issue's first task thread, from `origin/main`, and runs the issue's later task threads in
+it (`docs/adr/0009-task-threads-in-t3-worktrees.md`). Its path is the task thread's `worktree` in
+`t3rig ps --json`, and it's listed in `git worktree list`; work in it with `git -C <worktree>`.
 
 dev.impl and dev.review are per-task seats: each task gets a new T3 thread, titled with the task
 (`docs/adr/0008-task-threads.md`). dev.impl gets one thread per issue, kept through its fix rounds;
@@ -33,7 +36,7 @@ dev.review gets a fresh one per review round. Use the `send` command from your b
 
 Loop:
 
-1. Hand the task to dev.impl in a new task thread, naming the worktree path.
+1. Hand the task to dev.impl in a new task thread. It runs in the issue's worktree.
 2. Run the project's checks yourself in the worktree, commit, push the branch, and open the pull
    request (see `pr` below). dev.impl doesn't commit. End each commit message with the
    `Rig-Session` trailers from the culture: yours, and dev.impl's task thread's when it wrote the
@@ -92,8 +95,8 @@ can follow it without opening T3.
    ```
 
    Comment your plan on it, and add the label `in-progress`, removing `needs-approval` in the same
-   edit: `rig-queue` wins. Update `main` (`git pull --ff-only` in the main checkout) and create the
-   issue's worktree: `git worktree add .worktrees/<N> -b issue-<N>`. Work one issue at a time.
+   edit: `rig-queue` wins. Update `main` (`git pull --ff-only` in the main checkout). Don't create a
+   worktree: dev.impl's task thread gets one. Work one issue at a time.
    Before building, decide whether the implementation is straightforward, and build only that. For a
    choice that would be costly to undo and the issue doesn't settle (interface, layout, workflow,
    approach), post a comment titled "Open decisions for the operator": numbered questions, each with
@@ -114,7 +117,7 @@ can follow it without opening T3.
    issue without `rig-queue`. Commit that entry and push it to the branch. When CI is green
    (`gh pr checks <pr>`), merge from the main checkout:
    `gh pr merge <pr> --squash --subject "<title> (#N)"`. Then delete the remote branch if it's still
-   there (`git push origin --delete issue-<N>`), run `git worktree remove .worktrees/<N>` and
+   there (`git push origin --delete issue-<N>`), run `git worktree remove <worktree>` and
    `git branch -D issue-<N>`, delete the issue's excerpt file if there is one, and update `main` with
    `git pull --ff-only`. If the issue's "done when" needs something after the merge (such as CI runs
    on `main`), check it with `gh`. Before you archive them, note the links of the issue's task
@@ -128,16 +131,18 @@ can follow it without opening T3.
    `dev.pm` removes `needs-answer` when the operator has answered.
 5. If you can't finish it, comment why and what the operator must decide, remove `rig-queue` and
    `in-progress`, add `needs-answer`, and move to the next issue. There is no `blocked` label. Undo
-   the issue's changes by closing its pull request, if there is one, and removing its worktree and
-   branch (`git worktree remove --force .worktrees/<N>`, `git branch -D issue-<N>`, and the remote
-   branch if it was pushed).
+   the issue's changes by closing its pull request, if there is one, archiving its task threads
+   (`t3rig down <rig> --task "#N"`), and removing its worktree and branch
+   (`git worktree remove --force <worktree>`, `git branch -D issue-<N>`, and the remote branch if
+   it was pushed).
 6. If a cheap choice comes up while building (not an open decision from step 1), pick the most
    conservative option and list it under "Questions for the operator" in step 4.
 7. When `watch` pings you that `needs-answer` was removed from an open issue, the operator has
    answered your questions (from step 1, 4 or 5). The issue was already approved by `rig-queue`, so
    don't wait for it again: read the answers, add `in-progress` back, and continue that issue in its
-   worktree before taking new `rig-queue` work. If the worktree is gone, create it again: from the
-   branch if it still exists (`git worktree add .worktrees/<N> issue-<N>`), otherwise as in step 1.
+   worktree before taking new `rig-queue` work. If the worktree is gone but the branch still
+   exists, add one for it (`git worktree add .worktrees/<N> issue-<N>`) before the next task thread,
+   which then runs there; with no branch, the next task thread gets a new worktree.
    A draft pull request is marked ready with `gh pr ready`. If the answer denies or cancels the
    work, close the issue (see "Closing issues").
 

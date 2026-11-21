@@ -1,5 +1,6 @@
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -289,7 +290,9 @@ def test_send_new_task_starts_the_thread_then_sends(
 ) -> None:
     from t3rig.threads import MemoryT3
 
-    (skills_rig.parent / "rig.t3rig.yaml").write_text("per_task: {dev.worker: issue}\n")
+    (skills_rig.parent / "rig.t3rig.yaml").write_text(
+        "per_task: {dev.worker: issue}\nworktrees: false\n"
+    )
     t3 = MemoryT3(project_root=str(skills_rig.parent))
     monkeypatch.setattr("t3rig.cli.T3Code", lambda cli: t3)
     rig = str(skills_rig)
@@ -302,3 +305,20 @@ def test_send_new_task_starts_the_thread_then_sends(
     assert "--new needs --task" in capsys.readouterr().err
     assert main(["down", rig, "--task", "#18"]) == 0
     assert t3.threads == []
+
+
+def test_send_new_task_installs_the_skills_in_the_issue_s_worktree(
+    skills_rig: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from t3rig.threads import MemoryT3
+
+    root = skills_rig.parent
+    subprocess.run(["git", "init", "-q", "-b", "main", str(root)], check=True)
+    (root / "rig.t3rig.yaml").write_text("per_task: {dev.worker: issue}\n")
+    t3 = MemoryT3(project_root=str(root))
+    monkeypatch.setattr("t3rig.cli.T3Code", lambda cli: t3)
+    assert main(["send", str(skills_rig), "dev.worker", "--new", "--task", "#18", "go"]) == 0
+    worktree = root / ".t3-worktrees" / "issue-18"
+    assert (worktree / ".claude" / "skills" / "greeting" / "SKILL.md").is_file()
+    assert not (root / ".claude").exists()  # The main checkout is left alone.
+    assert str(worktree) in t3.sent[0][1]

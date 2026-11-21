@@ -15,8 +15,8 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from t3rig.rig import RigError
 from t3rig.spec import SKILL_ROOTS, Rig, Seat
+from t3rig.threads import RigError
 
 MANIFEST_VERSION = 1
 FIX = "move or remove it, or fold the edit into the skill source"
@@ -222,6 +222,15 @@ def plan_skills(rig: Rig) -> SkillPlan:
         planned = _plan_cwd(rig, cwd, seats, plan.errors)
         if planned is not None:
             plan.cwds.append(planned)
+    return plan
+
+
+def plan_worktree_skills(rig: Rig, seat: Seat, worktree: Path) -> SkillPlan:
+    """Installing, in a worktree of a seat's folder, the skills `up` installs in that folder."""
+    seats = [s for s in rig.seats if s.cwd == seat.cwd and s.skills]
+    plan = SkillPlan()
+    if seats and (planned := _plan_cwd(rig, worktree, seats, plan.errors)) is not None:
+        plan.cwds.append(planned)
     return plan
 
 

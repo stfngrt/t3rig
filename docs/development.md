@@ -84,9 +84,11 @@ trial version makes sure the TestPyPI build is the one tested.
 `rigs/self` develops t3rig with t3rig, as four seats. The {term}`project manager` (`dev.pm`) works
 with the {term}`operator` and writes specs and {term}`tickets <ticket>` as GitHub issues, labelled
 {term}`needs-approval`. When the operator adds {term}`rig-queue`, `dev.lead` takes the issue and
-hands it to `dev.impl` and `dev.review`. Each issue is worked in its own git worktree,
-`.worktrees/<n>` on the branch `issue-<n>`, and lands as one squash-merged pull request that
-`dev.review` reviews; the main checkout stays on `main` ({doc}`adr/0007-worktree-and-pr-per-issue`).
+hands it to `dev.impl` and `dev.review`. Each issue is worked in its own git worktree on the branch
+`issue-<n>`, and lands as one squash-merged pull request that `dev.review` reviews; the main
+checkout stays on `main` ({doc}`adr/0007-worktree-and-pr-per-issue`). t3rig creates the worktree
+with the issue's first task thread, and the issue's later task threads run in it
+({doc}`adr/0009-task-threads-in-t3-worktrees`).
 `dev.impl` and `dev.review` are per-task seats: `dev.impl` gets a new {term}`task thread` per issue
 and `dev.review` one per review round, which the lead archives when the issue closes
 ({doc}`adr/0008-task-threads`). `dev.lead` and `dev.pm` keep one long-lived thread each.
@@ -115,7 +117,7 @@ tracker and label docs they read.
   also be invoked automatically.
 - **Not taken, `implement-spec`:** it works on an integration branch, with a worktree per ticket and
   a PR. The rig now has a worktree and a pull request per issue too, but without an integration
-  branch, and `dev.impl` still doesn't commit: the lead does.
+  branch, and `dev.impl` still doesn't commit: the lead does, with `git -C <worktree>`.
 - **Not taken, `triage`:** its state machine would add labels (`needs-triage`, `ready-for-agent`,
   `wontfix`) and an `.out-of-scope/` folder that this rig doesn't use. The labels are mapped in
   `docs/agents/triage-labels.md` instead; `wontfix` is used only when closing an issue.

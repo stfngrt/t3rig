@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from t3rig.mcp import ACCESS_LEVELS
+from t3rig.skills import apply_skills, plan_worktree_skills
 from t3rig.spec import Rig, Seat
 from t3rig.t3 import T3Error
 from t3rig.threads import (
@@ -29,6 +30,7 @@ from t3rig.threads import (
     task_title,
     thread_label,
 )
+from t3rig.worktrees import find_worktree, issue_branch, new_worktree, seat_folder
 
 PROVIDERS = {"claude-code": "claudeAgent", "codex": "codex"}
 # Seats are told to pass --from, so a send without it is taken to be from a person. An
@@ -49,10 +51,10 @@ def seat_rows(rig: Rig, t3: T3) -> list[dict[str, Any]]:
     rows = []
     for status in seat_threads(rig, t3):
         thread = status.thread or {}
-        pending = 0
-        if is_busy(thread):
+        details: dict[str, Any] = {}
+        if is_busy(thread) or (thread and status.task):  # Only `show` has these fields.
             details = t3.show_thread(thread["threadId"], messages=0).get("thread", {})
-            pending = details.get("pendingRequestCount", 0)
+        pending = details.get("pendingRequestCount", 0) if is_busy(thread) else 0
         rows.append(
             {
                 "seat": status.seat.seat_id,
@@ -67,6 +69,7 @@ def seat_rows(rig: Rig, t3: T3) -> list[dict[str, Any]]:
                 "updated_at": thread.get("updatedAt"),
                 "thread_id": thread.get("threadId"),
                 "link": thread.get("link"),
+                "worktree": details.get("worktreePath"),
                 "extra_threads": status.duplicates,
             }
         )
@@ -127,14 +130,22 @@ def _task_lines(rig: Rig, seat: Seat, task: str | None, send_command: str) -> li
     return lines
 
 
-def seat_brief(rig: Rig, seat: Seat, task: str | None = None) -> str:
-    """A seat's brief: the first message its thread receives. A task thread's says its task."""
+def seat_brief(rig: Rig, seat: Seat, task: str | None = None, worktree: Path | None = None) -> str:
+    """A seat's brief: the first message its thread receives. A task thread's says its task, and
+    the issue's worktree when it runs in one."""
     send_command = t3rig_command("send", "--from", seat.seat_id, str(rig.path))
     others = [s.seat_id for s in rig.seats if s != seat]
-    parts = [
-        f"You are seat {seat.seat_id} in the agent team (rig) {rig.name}.",
-        f"Your working directory for this rig is {seat.cwd}. Change to it before working.",
-    ]
+    parts = [f"You are seat {seat.seat_id} in the agent team (rig) {rig.name}."]
+    if worktree and task:
+        parts.append(
+            f"Your working directory for this rig is {worktree}, in the issue's git worktree on "
+            f"branch {issue_branch(task)}, where this thread runs. The main checkout's copy is "
+            f"{seat.cwd}; don't change it."
+        )
+    else:
+        parts.append(
+            f"Your working directory for this rig is {seat.cwd}. Change to it before working."
+        )
     if rig.summary:
         parts.append(f"Team summary: {rig.summary}")
     if others:
@@ -173,11 +184,14 @@ def _archive_quietly(t3: T3, thread_id: str) -> None:
         pass  # The caller is already reporting the failure that led here.
 
 
-def _launch(rig: Rig, t3: T3, seat: Seat, title: str, brief: str) -> None:
-    """Launch idle, check T3 applied the settings, and only then send the brief."""
+def _launch(
+    t3: T3, seat: Seat, title: str, workspace: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Launch idle and check T3 applied the settings. Returns the thread, waiting for its brief."""
     arguments: dict[str, Any] = {
         "projectId": _project_id(t3, seat.cwd),
         "title": title,
+        **({"workspaceStrategy": workspace} if workspace else {}),
     }
     option = EFFORT_OPTIONS[seat.runtime]
     if seat.runtime_mode:
@@ -209,13 +223,13 @@ def _launch(rig: Rig, t3: T3, seat: Seat, title: str, brief: str) -> None:
                 f"{seat.seat_id}: wanted {name} {wanted}, but T3 applied {actual}; "
                 "archived the thread before it started"
             )
-    t3.send(thread_id, brief)
+    return {**thread, "threadId": thread_id}
 
 
 def _start(rig: Rig, t3: T3, seat: Seat, title: str, brief: str) -> None:
     """Start a thread titled `title` for a seat, with its settings, and send it the brief."""
     if _needs_mcp(seat):
-        _launch(rig, t3, seat, title, brief)
+        t3.send(_launch(t3, seat, title)["threadId"], brief)
     else:
         provider = PROVIDERS[seat.runtime] if seat.model else None
         t3.start_thread(str(seat.cwd), title, brief, provider, seat.model)
@@ -234,7 +248,56 @@ def _check_started(seat: Seat, title: str, thread: dict[str, Any] | None) -> str
     return f"started {thread['threadId']} ({thread.get('runtimeMode', 'unknown mode')})"
 
 
-def _preflight(seats: list[Seat], t3: T3) -> None:
+def _wait_for_worktree(
+    t3: T3, thread_id: str, sleep: Callable[[float], None], wait_seconds: float
+) -> str | None:
+    """The thread's worktree path. T3 checks the worktree out after the launch returns."""
+    deadline = time.monotonic() + wait_seconds
+    while True:
+        path = t3.show_thread(thread_id, messages=0).get("thread", {}).get("worktreePath")
+        if path or time.monotonic() >= deadline:
+            return path
+        sleep(1)
+
+
+def _start_in_worktree(
+    rig: Rig,
+    t3: T3,
+    seat: Seat,
+    title: str,
+    task: str,
+    sleep: Callable[[float], None],
+    wait_seconds: float,
+) -> None:
+    """Start a task thread in its issue's T3 worktree, binding the worktree if the issue has one,
+    and install the seats' skills there before the brief starts it (ADR 0009)."""
+    branch = issue_branch(task)
+    existing = find_worktree(seat.cwd, branch)
+    if existing:
+        workspace = {"type": "existing_worktree", "worktreePath": str(existing)}
+    else:
+        workspace = new_worktree(seat.cwd, branch)
+    thread = _launch(t3, seat, title, workspace)
+    path = thread.get("worktreePath") or _wait_for_worktree(
+        t3, thread["threadId"], sleep, wait_seconds
+    )
+    if not path:  # T3 gives no error when the branch exists already.
+        _archive_quietly(t3, thread["threadId"])
+        raise RigError(
+            f"{seat.seat_id}: T3 started the thread without a worktree for {branch}, so it was "
+            f"archived. If {branch} exists without a worktree, add one with "
+            f"`git worktree add <path> {branch}` and start the task again; t3rig uses it"
+        )
+    folder = seat_folder(seat.cwd, Path(path))
+    plan = plan_worktree_skills(rig, seat, folder)
+    if plan.errors:
+        _archive_quietly(t3, thread["threadId"])
+        raise RigError("\n".join(plan.errors))
+    apply_skills(plan)
+    t3.send(thread["threadId"], seat_brief(rig, seat, task, folder))
+
+
+def _preflight(rig: Rig, seats: list[Seat], t3: T3) -> None:
     """Refuse before starting anything, so a rig isn't left half up."""
     missing_model = [
         s.seat_id for s in seats if not s.model and (s.runtime != "claude-code" or s.effort)
@@ -242,7 +305,7 @@ def _preflight(seats: list[Seat], t3: T3) -> None:
     if missing_model:
         # T3 takes a provider and effort only with a model, so these would run on the default.
         raise RigError(f"these seats need a model for their runtime or effort: {missing_model}")
-    restricted = [s for s in seats if _needs_mcp(s)]
+    restricted = [s for s in seats if _needs_mcp(s) or rig.uses_worktrees(s)]
     if not restricted:
         return
     access = t3.access()
@@ -272,7 +335,7 @@ def up(rig: Rig, t3: T3) -> list[str]:
         else:
             name = status.seat.seat_id
             lines.append(f"{name}: already has thread {status.thread['threadId']}")
-    _preflight([s.seat for s in to_start], t3)
+    _preflight(rig, [s.seat for s in to_start], t3)
 
     for status in to_start:
         _start(rig, t3, status.seat, status.session_name, seat_brief(rig, status.seat))
@@ -285,7 +348,14 @@ def up(rig: Rig, t3: T3) -> list[str]:
     return lines
 
 
-def start_task(rig: Rig, t3: T3, seat: Seat, task: str) -> str:
+def start_task(
+    rig: Rig,
+    t3: T3,
+    seat: Seat,
+    task: str,
+    sleep: Callable[[float], None] = time.sleep,
+    wait_seconds: float = 60,
+) -> str:
     """Start a per-task seat's thread for a task, with its brief. Returns a line for the output.
 
     Refused if the seat isn't per-task, the task has a live thread already, or the seat would
@@ -305,9 +375,12 @@ def start_task(rig: Rig, t3: T3, seat: Seat, task: str) -> str:
             f"{seat.seat_id} already works on {', '.join(sorted(issues))}, and max_parallel is "
             f"{rig.max_parallel}; archive a finished issue's threads with `down --task` first"
         )
-    _preflight([seat], t3)
+    _preflight(rig, [seat], t3)
     title = task_title(rig.session_name(seat), task)
-    _start(rig, t3, seat, title, seat_brief(rig, seat, task))
+    if rig.uses_worktrees(seat):
+        _start_in_worktree(rig, t3, seat, title, task, sleep, wait_seconds)
+    else:
+        _start(rig, t3, seat, title, seat_brief(rig, seat, task))
     thread = next((s.thread for s in task_threads(rig, t3, seat) if s.task == task), None)
     return f"{seat.seat_id} {task}: {_check_started(seat, title, thread)}"
 

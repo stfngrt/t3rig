@@ -1,6 +1,7 @@
 # A per-task seat gets a thread per task
 
-**Status:** accepted (#33); supersedes ADR 0001 for per-task seats
+**Status:** accepted (#33); supersedes ADR 0001 for per-task seats; where task threads start is
+superseded by ADR 0009
 
 {doc}`ADR 0001 <0001-seats-are-threads>` made a {term}`seat` one T3 {term}`thread`, found by its
 title. That piled context from every issue into the worker seats' threads. Seats named in

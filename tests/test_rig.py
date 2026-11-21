@@ -1,4 +1,5 @@
 import dataclasses
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,7 @@ from t3rig.rig import (
 from t3rig.spec import Edge, Rig, Seat, StartupText
 from t3rig.t3 import T3Error
 from t3rig.threads import MemoryT3
+from t3rig.worktrees import seat_folder
 
 
 def memory(tmp_path: Path, **settings: Any) -> MemoryT3:
@@ -328,7 +330,8 @@ def test_stop_reports_a_seat_that_stays_busy(tmp_path: Path) -> None:
 
 
 def task_rig(tmp_path: Path, **settings: Any) -> Rig:
-    """dev.lead long-lived, dev.impl per issue."""
+    """dev.lead long-lived, dev.impl per issue; without worktrees unless asked."""
+    settings = {"worktrees": False, **settings}
     return dataclasses.replace(make_rig(tmp_path), per_task={"dev.impl": "issue"}, **settings)
 
 
@@ -346,6 +349,7 @@ def test_start_task_uses_the_seat_s_settings_and_a_brief_naming_the_task(tmp_pat
     rig = dataclasses.replace(
         make_rig(tmp_path, model="m", runtime_mode="auto", effort="low"),
         per_task={"dev.impl": "issue"},
+        worktrees=False,
     )
     t3 = memory(tmp_path)
     assert (
@@ -417,3 +421,92 @@ def test_the_lead_s_brief_says_how_to_start_task_threads(tmp_path: Path) -> None
     assert "These seats get a new T3 thread per task: dev.impl." in lead
     assert '--new --task "#N" <seat>' in lead and '--task "#N"' in lead
     assert "per task" not in seat_brief(make_rig(tmp_path), make_rig(tmp_path).seats[0])
+
+
+def git(cwd: Path, *args: str) -> None:
+    subprocess.run(["git", "-C", str(cwd), *args], check=True, capture_output=True)
+
+
+def repo(tmp_path: Path) -> Path:
+    """A git repository on main with one commit and no remote."""
+    git(tmp_path, "init", "-q", "-b", "main")
+    git(
+        tmp_path,
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@t",
+        "commit",
+        "-q",
+        "--allow-empty",
+        "-m",
+        "x",
+    )
+    return tmp_path
+
+
+def test_a_task_thread_starts_in_a_new_worktree_named_in_its_brief(tmp_path: Path) -> None:
+    rig, t3 = task_rig(repo(tmp_path), worktrees=True), memory(tmp_path)
+    assert start_task(rig, t3, rig.seats[1], "#18").startswith("dev.impl #18: started")
+    launch = next(args for name, args in t3.actions if name == "launch")
+    assert launch["workspaceStrategy"] == {
+        "type": "worktree",
+        "branch": "issue-18",
+        "baseRef": "main",  # No remote to start from.
+        "startFromOrigin": False,
+    }
+    worktree = tmp_path / ".t3-worktrees" / "issue-18"
+    brief = t3.sent[0][1]
+    assert f"directory for this rig is {worktree}, in the issue's git worktree on branch " in brief
+    assert "Change to it" not in brief
+    assert seat_rows(rig, t3)[1]["worktree"] == str(worktree)
+
+
+def test_a_new_worktree_starts_from_the_remote(tmp_path: Path) -> None:
+    rig, t3 = task_rig(repo(tmp_path), worktrees=True), memory(tmp_path)
+    git(tmp_path, "update-ref", "refs/remotes/origin/main", "HEAD")
+    start_task(rig, t3, rig.seats[1], "#18")
+    launch = next(args for name, args in t3.actions if name == "launch")
+    assert launch["workspaceStrategy"]["baseRef"] == "origin/main"
+    assert launch["workspaceStrategy"]["startFromOrigin"] is True
+
+
+def test_a_later_task_of_the_issue_binds_its_worktree(tmp_path: Path) -> None:
+    rig, t3 = task_rig(repo(tmp_path), worktrees=True), memory(tmp_path)
+    worktree = tmp_path / ".worktrees" / "18"
+    git(tmp_path, "worktree", "add", "-q", str(worktree), "-b", "issue-18")
+    start_task(rig, t3, rig.seats[1], "#18 r2")
+    launch = next(args for name, args in t3.actions if name == "launch")
+    assert launch["workspaceStrategy"] == {
+        "type": "existing_worktree",
+        "worktreePath": str(worktree),
+    }
+
+
+def test_a_thread_t3_starts_without_its_worktree_is_archived(tmp_path: Path) -> None:
+    rig, t3 = task_rig(repo(tmp_path), worktrees=True), memory(tmp_path, no_worktree=True)
+    with pytest.raises(RigError, match="without a worktree for issue-18, so it was archived"):
+        start_task(rig, t3, rig.seats[1], "#18", lambda _: None, wait_seconds=0)
+    assert t3.threads == [] and t3.sent == []
+
+
+def test_a_task_thread_waits_for_t3_to_check_out_its_worktree(tmp_path: Path) -> None:
+    rig, t3 = task_rig(repo(tmp_path), worktrees=True), memory(tmp_path, no_worktree=True)
+    late = tmp_path / "late"
+    start_task(rig, t3, rig.seats[1], "#18", lambda _: t3.threads[0].update(worktreePath=str(late)))
+    assert str(late) in t3.sent[0][1]
+
+
+def test_worktrees_need_a_git_repository_and_an_issue_task(tmp_path: Path) -> None:
+    rig, t3 = task_rig(tmp_path, worktrees=True), memory(tmp_path)
+    with pytest.raises(RigError, match="isn't in a git repository"):
+        start_task(rig, t3, rig.seats[1], "#18")
+    with pytest.raises(RigError, match="can't name a branch after task"):
+        start_task(rig, t3, rig.seats[1], "#18/x")
+    assert t3.threads == []
+
+
+def test_a_seat_in_a_subfolder_works_in_that_subfolder_of_the_worktree(tmp_path: Path) -> None:
+    (repo(tmp_path) / "sub").mkdir()
+    assert seat_folder(tmp_path / "sub", Path("/wt")) == Path("/wt/sub")
+    assert seat_folder(tmp_path, Path("/wt")) == Path("/wt")

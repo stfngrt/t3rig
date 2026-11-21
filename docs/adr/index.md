@@ -15,4 +15,5 @@ Terms are in the {doc}`../glossary`.
 0006-work-on-main
 0007-worktree-and-pr-per-issue
 0008-task-threads
+0009-task-threads-in-t3-worktrees
 ```

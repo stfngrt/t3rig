@@ -5,7 +5,10 @@ the version is 0.x, a minor version can change behaviour.
 
 ## Unreleased
 
-Nothing yet.
+- **Task threads run in T3 worktrees** (#38): the first task thread of issue `#N` starts in a new
+  T3 worktree on `issue-N`, and later ones bind it. The seats' skills are installed there first,
+  and `ps --json` shows each task thread's `worktree`. It needs `t3rig login`;
+  `worktrees: false` in `rig.t3rig.yaml` turns it off.
 
 ## 0.1.0 (not yet released)
 

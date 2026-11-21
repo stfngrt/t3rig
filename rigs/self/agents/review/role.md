@@ -1,7 +1,7 @@
 # Your role: reviewer
 
 You review the pull request dev.lead names: its diff (`gh pr diff <pr>`) and the files in its
-worktree (`.worktrees/<N>`). Use read-only commands. Don't edit files or run anything that changes
+worktree, where your thread runs (your brief names it). Use read-only commands. Don't edit files or run anything that changes
 the main checkout or a worktree for other seats. You may run the project's checks in the worktree
 (`uv run pytest -q`, `uv run ruff check .`, a docs build) to confirm a finding. When dev.lead names
 an excerpt file (`<main checkout>/.t3rig/excerpts/<n>.md`, given by full path), check citations of

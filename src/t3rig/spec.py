@@ -193,9 +193,13 @@ class Rig:
     notify_seat: str | None = None
     per_task: dict[str, str] = field(default_factory=dict)  # Seat id to task scope.
     max_parallel: int = 1
+    worktrees: bool = True  # Task threads run in a T3 worktree per issue (ADR 0009).
 
     def is_per_task(self, seat: Seat) -> bool:
         return seat.seat_id in self.per_task
+
+    def uses_worktrees(self, seat: Seat) -> bool:
+        return self.worktrees and self.is_per_task(seat)
 
     def session_name(self, seat: Seat) -> str:
         """OpenRig's session name for a seat, used here as the T3 thread title."""
@@ -899,7 +903,10 @@ def _load_settings(rig_root: Path, seats: set[str], errors: list[str]) -> dict[s
     data = _read_yaml_mapping(path, SETTINGS_FILE, errors)
     if data is None:
         return {}
-    keys = {"tracker", "review_rounds", "notify_seat", "per_task", "max_parallel"}
+    keys = {"tracker", "review_rounds", "notify_seat", "per_task", "max_parallel", "worktrees"}
+    worktrees = data.get("worktrees", True)
+    if type(worktrees) is not bool:
+        errors.append(f"{SETTINGS_FILE}.worktrees: must be true or false (got {worktrees!r})")
     _check_keys(data, keys, set(), SETTINGS_FILE, errors)
     return {
         "tracker": _load_tracker(data.get("tracker"), seats, errors),
@@ -907,6 +914,7 @@ def _load_settings(rig_root: Path, seats: set[str], errors: list[str]) -> dict[s
         "notify_seat": _load_notify_seat(data, seats, errors),
         "per_task": _load_per_task(data, seats, errors),
         "max_parallel": _positive_int(data, "max_parallel", 1, errors),
+        "worktrees": worktrees,
     }
 
 

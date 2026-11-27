@@ -60,23 +60,30 @@ gives (`projectV2.items`).
 
 ## Pull requests
 
-Each issue is worked in its own worktree, `.worktrees/<n>` on the branch `issue-<n>`, and lands
-through one pull request (see `docs/adr/0007-worktree-and-pr-per-issue.md`). **PRs as a request
-surface: no**: work still starts from an issue labelled `rig-queue`, never from a pull request.
+Each issue is worked in its own worktree on the branch `issue-<n>`, and lands through one pull
+request (see `docs/adr/0007-worktree-and-pr-per-issue.md` and
+`docs/adr/0009-task-threads-in-t3-worktrees.md`). **PRs as a request surface: no**: work still
+starts from an issue labelled `rig-queue`, never from a pull request.
 
-- **Worktree** (dev.lead, from an up-to-date `main`):
-  `git worktree add .worktrees/<n> -b issue-<n>`.
+- **Worktree** (t3rig): the issue's first task thread (`send --new --task "#<n>"`) runs in a new T3
+  worktree on `issue-<n>`, started from `origin/main`, and later task threads of the issue use the
+  same one. Its path is under the task thread's `worktree` in `t3rig ps --json`, and in
+  `git worktree list`.
+- **Commit** (dev.lead): `git -C <worktree> add …`, `git -C <worktree> commit …`,
+  `git -C <worktree> push -u origin issue-<n>`.
 - **Open** (dev.lead): `gh pr create --head issue-<n> --title "..." --body "..."`, the body written
   with the `pr` skill, starting with the seat line and containing `Closes #<n>`. Add `--draft` for
   partial work waiting on `needs-answer`; `gh pr ready <pr>` undrafts it.
-- **Read the diff** (dev.review): `gh pr diff <pr>`, plus the files in the worktree.
+- **Read the diff** (dev.review): `gh pr diff <pr>`, plus the files in the worktree, where its
+  thread runs.
 - **Review** (dev.review): `gh pr review <pr> --comment --body "..."`. The shared account can't
   approve its own pull request, so reviews are comments.
 - **CI**: `gh pr checks <pr>`.
 - **Merge** (dev.lead, from the main checkout):
   `gh pr merge <pr> --squash --subject "<title> (#<n>)"`, then
   `git push origin --delete issue-<n>` if the branch is still there,
-  `git worktree remove .worktrees/<n>`, `git branch -D issue-<n>` and `git pull --ff-only`.
+  `git worktree remove <worktree>`, `git branch -D issue-<n>` and `git pull --ff-only`. T3 keeps
+  the worktree when the task threads are archived, so this step stays.
 
 ## When a skill says "publish to the issue tracker"
 

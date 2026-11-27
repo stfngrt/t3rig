@@ -19,8 +19,9 @@ under "Working on t3rig".
 - Only dev.pm grills the operator or talks to them about new work. Other seats put questions in their
   final reply to their dispatcher. The lead still takes tasks from the operator, and posts its
   questions for the operator with `needs-answer` on issues; the operator answers them with dev.pm.
-- Each issue is worked in its own git worktree, `.worktrees/<N>` on the branch `issue-<N>`, and the
-  main checkout stays on `main`. Only dev.lead creates, commits in and removes worktrees. Never run
+- Each issue is worked in its own git worktree on the branch `issue-<N>`, and the main checkout stays
+  on `main`. t3rig creates it with the issue's first task thread, whose seats run in it. Only
+  dev.lead commits in and removes worktrees. Never run
   anything that disturbs the main checkout or another worktree, such as `git stash`, `git checkout`,
   `git switch`, `git reset` or `git clean`.
 - The rig posts to GitHub under the operator's account until it has its own bot identity. So start

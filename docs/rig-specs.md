@@ -29,6 +29,7 @@ per_task:             # optional: seats that get a new thread per task
   dev.impl: issue
   dev.review: round
 max_parallel: 1       # how many issues a per-task seat works on at once
+worktrees: true       # task threads run in a T3 worktree per issue (the default)
 ```
 
 - `tracker` is the issue tracker {doc}`watch` polls: `kind` picks `gh` or `glab`, `repo` is the
@@ -43,6 +44,10 @@ max_parallel: 1       # how many issues a per-task seat works on at once
   {doc}`getting-started`.
 - `max_parallel`, a positive integer and 1 by default, is how many issues a per-task seat may have
   live task threads for at once. `send --new` refuses to start one beyond it.
+- `worktrees`, true by default, runs each task thread in its issue's git worktree, on the branch
+  `issue-N`: the first task thread of `#N` gets a new T3 worktree, and later ones bind it
+  ({doc}`adr/0009-task-threads-in-t3-worktrees`). Set it to `false` to start task threads in the
+  project root, as for a project that isn't a git repository.
 - `review_rounds`, a positive integer and 2 by default, is how many review rounds a change gets.
   t3rig only checks it; the seats' instructions use it.
 

@@ -9,6 +9,7 @@ T3 Code, and `MemoryT3`, which keeps threads in memory, for tests.
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Protocol
 
 from t3rig.mcp import McpClient, load_credential
@@ -174,6 +175,7 @@ class MemoryT3:
     send_error: Exception | None = None
     fail_archive: bool = False
     keep_running: bool = False  # Ignore interrupts.
+    no_worktree: bool = False  # Ignore a launch's workspaceStrategy, as T3 does for a used branch.
 
     def put(self, title: str, **fields: Any) -> dict[str, Any]:
         """Add a thread as the newest, or update the one with the same id (default `id-<title>`)."""
@@ -252,6 +254,14 @@ class MemoryT3:
             model=selection.get("model", "default-model"),
             runtimeMode=self.applied_mode or arguments.get("runtimeMode", "full-access"),
         )
+        workspace = arguments.get("workspaceStrategy") or {}
+        if workspace.get("type") == "existing_worktree" and not self.no_worktree:
+            thread["worktreePath"] = workspace["worktreePath"]
+        elif workspace.get("type") == "worktree" and not self.no_worktree:
+            # Real T3 checks out a worktree here; this only makes the folder.
+            path = Path(self.project_root) / ".t3-worktrees" / workspace["branch"]
+            path.mkdir(parents=True, exist_ok=True)
+            thread.update(worktreePath=str(path), branch=workspace["branch"])
         options = [{"id": k, "value": v} for k, v in selection.get("options", {}).items()]
         return {"threadId": thread["threadId"], "modelSelection": {"options": options}}
 

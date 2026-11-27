@@ -1,6 +1,7 @@
 # Each issue gets a worktree and a pull request
 
-**Status:** accepted (#9), supersedes ADR 0006
+**Status:** accepted (#9), supersedes ADR 0006; who creates the worktree and where is superseded
+by ADR 0009
 
 The self {term}`rig`'s lead creates a git worktree per issue in `.worktrees/<n>` on a branch
 `issue-<n>`, and opens a pull request for it. The pull request is the review target: `dev.review`

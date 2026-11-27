@@ -700,10 +700,14 @@ def test_per_task_seats_and_max_parallel(tmp_path: Path) -> None:
     rig = load_rig(path)
     assert rig.per_task == {"dev.a": "issue", "dev.b": "round"}
     assert rig.is_per_task(rig.seats[0])
+    assert rig.uses_worktrees(rig.seats[0])  # On by default for per-task seats.
+    (tmp_path / "rig.t3rig.yaml").write_text("per_task: {dev.a: issue}\nworktrees: false\n")
+    assert not load_rig(path).uses_worktrees(rig.seats[0])
     (tmp_path / "rig.t3rig.yaml").write_text(
-        "per_task: {dev.a: forever, dev.x: issue}\nmax_parallel: 0\n"
+        "per_task: {dev.a: forever, dev.x: issue}\nmax_parallel: 0\nworktrees: sure\n"
     )
     errors = errors_for(path)
     assert "per_task.dev.a: must be one of issue, round (got 'forever')" in errors
     assert "rig.t3rig.yaml.per_task: no seat 'dev.x' in the rig" in errors
     assert "rig.t3rig.yaml.max_parallel: must be a positive integer (got 0)" in errors
+    assert "rig.t3rig.yaml.worktrees: must be true or false (got 'sure')" in errors

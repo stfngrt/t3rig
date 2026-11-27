@@ -135,7 +135,7 @@ Thread
 Task thread
   A T3 {term}`thread` a per-task {term}`seat` gets for one piece of work: one issue for dev.impl,
   one review round for dev.review. Its title is the seat's {term}`session name` plus the task, for
-  example `dev-impl@self #18`.
+  example `dev-impl@self #18`. It runs in its issue's git worktree.
   _Avoid_: sub-thread, worker thread
 
 Run

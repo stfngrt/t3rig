@@ -73,8 +73,8 @@ example from a link in an issue comment or a commit's `Rig-Session` trailer, `lo
 shows that thread, if T3 still serves it. It refuses a thread whose title isn't the seat's session
 name.
 
-Threads start in the T3 project's root. A seat's `cwd` must be inside a T3 project, and the seat is
-told to change to it.
+Threads start in the T3 project's root, except task threads (below). A seat's `cwd` must be inside a
+T3 project, and the seat is told to change to it.
 
 ## Task threads
 
@@ -84,7 +84,7 @@ the task, such as `dev-impl@self #18` or `dev-review@self #18 r2`. `up` doesn't 
 The seat that delegates to them does, one task at a time:
 
 ```sh
-uv run t3rig send rig.yaml dev.impl --new --task "#18" "Build #18 in .worktrees/18"
+uv run t3rig send rig.yaml dev.impl --new --task "#18" "Build #18"
 uv run t3rig send rig.yaml dev.impl --task "#18" "Fix the review findings"
 uv run t3rig send rig.yaml dev.review --new --task "#18 r2" "Review round 2"
 uv run t3rig down rig.yaml --task "#18"   # archive every task thread of #18, all rounds
@@ -93,6 +93,11 @@ uv run t3rig down rig.yaml --task "#18"   # archive every task thread of #18, al
 - `send --new --task` starts the thread with the seat's brief, which names the task, and the seat's
   model, effort and runtime mode, as `up` would; then it sends the message. It refuses a task that
   already has a live thread, and more issues at once than `max_parallel`.
+- Each task thread runs in its issue's git worktree, on the branch `issue-18`. The first one for
+  `#18` gets a new T3 worktree; later ones, such as review rounds, bind the same one. t3rig installs
+  the seats' skills in the worktree before the brief, and the brief names the worktree. This uses
+  T3's /mcp, so run `t3rig login` first, or set `worktrees: false` (see {doc}`rig-specs`). The
+  worktree outlives the threads: remove it with `git worktree remove` when the issue is done.
 - `send --task`, `log --task` and `stop --task` reach a live task thread. Without `--task` they use
   the seat's only live task thread, and list them if there are several.
 - `ps`, the {doc}`status page <serve>` and {doc}`watch` show and follow each live task thread under
